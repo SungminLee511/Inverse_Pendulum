@@ -168,5 +168,171 @@ export function controllability(A, B) {
   return { M, rank: matrixRank(M) };
 }
 
-// ---------- 4.2 CARE placeholder (filled next) ----------
-export function solveCARE(/* A, B, Q, R */) { throw new Error('solveCARE: filled in Phase 4.2'); }
+// ---------- 4.2 CARE solver via matrix sign function ----------
+//
+// Solve continuous-time algebraic Riccati equation
+//     A^T P + P A − P B R^{-1} B^T P + Q = 0
+// for symmetric positive-definite P, given (A: n×n, B: n×1 or n×p,
+// Q: n×n SPD, R: scalar or p×p SPD).
+//
+// Method: build Hamiltonian
+//     H = [ A     -G ]    where G = B R^{-1} B^T
+//         [-Q    -A^T]
+// then iterate the matrix sign function
+//     Z_{k+1} = ½ (Z_k + Z_k^{-1}) ,   Z_0 = H
+// to converge to S = sign(H).  The stable invariant subspace of H is the
+// column space of (I - S) / 2.  Take a QR decomposition, split into
+// [X1; X2] (top n rows, bottom n rows), then  P = X2 * X1^{-1}.
+//
+// Works well for small (≤16) matrices typical of this project.
+
+/** Invert a square matrix via Gauss-Jordan with partial pivoting. */
+export function matrixInvert(A) {
+  const n = A.length;
+  // [A | I] augmented
+  const M = Array.from({ length: n }, (_, i) => {
+    const row = new Array(2 * n).fill(0);
+    for (let j = 0; j < n; j++) row[j] = A[i][j];
+    row[n + i] = 1;
+    return row;
+  });
+  for (let k = 0; k < n; k++) {
+    let piv = k;
+    let mx = Math.abs(M[k][k]);
+    for (let i = k + 1; i < n; i++) {
+      const a = Math.abs(M[i][k]);
+      if (a > mx) { mx = a; piv = i; }
+    }
+    if (mx < 1e-14) throw new Error('matrixInvert: singular');
+    if (piv !== k) [M[k], M[piv]] = [M[piv], M[k]];
+    const inv = 1 / M[k][k];
+    for (let j = 0; j < 2 * n; j++) M[k][j] *= inv;
+    for (let i = 0; i < n; i++) {
+      if (i === k) continue;
+      const f = M[i][k];
+      if (f === 0) continue;
+      for (let j = 0; j < 2 * n; j++) M[i][j] -= f * M[k][j];
+    }
+  }
+  const inv = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) inv[i][j] = M[i][n + j];
+  return inv;
+}
+
+/** Matrix sign function via Newton iteration. */
+export function matrixSign(A, { maxIter = 60, tol = 1e-12 } = {}) {
+  const n = A.length;
+  let Z = A.map(r => r.slice());
+  for (let k = 0; k < maxIter; k++) {
+    const Zinv = matrixInvert(Z);
+    const Znew = Array.from({ length: n }, () => new Array(n).fill(0));
+    let diff = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        Znew[i][j] = 0.5 * (Z[i][j] + Zinv[i][j]);
+        diff = Math.max(diff, Math.abs(Znew[i][j] - Z[i][j]));
+      }
+    }
+    Z = Znew;
+    if (diff < tol) return Z;
+  }
+  return Z;
+}
+
+/** Modified Gram-Schmidt QR. Returns {Q, R}.  A: m×n with m ≥ n. */
+export function qrDecompose(A) {
+  const m = A.length, n = A[0].length;
+  const Q = Array.from({ length: m }, () => new Array(n).fill(0));
+  const R = Array.from({ length: n }, () => new Array(n).fill(0));
+  const V = A.map(r => r.slice());
+  for (let j = 0; j < n; j++) {
+    let norm = 0;
+    for (let i = 0; i < m; i++) norm += V[i][j] * V[i][j];
+    norm = Math.sqrt(norm);
+    R[j][j] = norm;
+    if (norm < 1e-14) continue;
+    for (let i = 0; i < m; i++) Q[i][j] = V[i][j] / norm;
+    for (let k = j + 1; k < n; k++) {
+      let dot = 0;
+      for (let i = 0; i < m; i++) dot += Q[i][j] * V[i][k];
+      R[j][k] = dot;
+      for (let i = 0; i < m; i++) V[i][k] -= dot * Q[i][j];
+    }
+  }
+  return { Q, R };
+}
+
+/** Solve A X = B for X (n×n A, n×p B). */
+export function solveLinearSystem(A, B) {
+  const Ainv = matrixInvert(A);
+  return matMul(Ainv, B);
+}
+
+/** Symmetrize a square matrix in-place-ish: returns 0.5(A + A^T). */
+function symmetrize(P) {
+  const n = P.length;
+  const out = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) out[i][j] = 0.5 * (P[i][j] + P[j][i]);
+  return out;
+}
+
+/** Solve continuous-time algebraic Riccati equation
+ *      A^T P + P A − P B R^{-1} B^T P + Q = 0
+ *  Returns { P, K }  where  K = R^{-1} B^T P  is the LQR feedback gain
+ *  (control law: u = -K x_state). */
+export function solveCARE(A, B, Q, R) {
+  const n = A.length;
+  // B may be passed as a 1-D vector (n,) or 2-D (n,p). Promote to (n,p).
+  let Bm;
+  if (!Array.isArray(B[0])) Bm = B.map(v => [v]);
+  else Bm = B;
+  const p = Bm[0].length;
+
+  // R may be scalar or p×p.
+  let Rm;
+  if (typeof R === 'number') {
+    Rm = Array.from({ length: p }, (_, i) => Array.from({ length: p }, (_, j) => i === j ? R : 0));
+  } else Rm = R;
+  const Rinv = matrixInvert(Rm);
+  const BT = transpose(Bm);
+  const G = matMul(matMul(Bm, Rinv), BT);   // n×n
+  const AT = transpose(A);
+
+  // Hamiltonian H (2n × 2n)
+  const N2 = 2 * n;
+  const H = Array.from({ length: N2 }, () => new Array(N2).fill(0));
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    H[i][j]         =  A[i][j];
+    H[i][j + n]     = -G[i][j];
+    H[i + n][j]     = -Q[i][j];
+    H[i + n][j + n] = -AT[i][j];
+  }
+
+  const S = matrixSign(H);
+
+  // Stable invariant subspace = column space of (I - S) / 2
+  const W = Array.from({ length: N2 }, () => new Array(N2).fill(0));
+  for (let i = 0; i < N2; i++) for (let j = 0; j < N2; j++) {
+    W[i][j] = (i === j ? 1 : 0) - S[i][j];
+  }
+
+  // QR of W; keep first n columns of Q as the basis
+  const { Q: Qmat } = qrDecompose(W);
+  // Take first n columns
+  const X1 = Array.from({ length: n }, () => new Array(n).fill(0));
+  const X2 = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    X1[i][j] = Qmat[i][j];
+    X2[i][j] = Qmat[i + n][j];
+  }
+
+  // P = X2 * X1^{-1}
+  let P = matMul(X2, matrixInvert(X1));
+  P = symmetrize(P);                         // numerical cleanup
+  // K = R^{-1} B^T P
+  const K_mat = matMul(matMul(Rinv, BT), P);
+  // Flatten K if p==1
+  const K = (p === 1) ? K_mat[0] : K_mat;
+
+  return { P, K };
+}

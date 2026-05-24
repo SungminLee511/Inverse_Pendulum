@@ -127,3 +127,17 @@ Screenshots `IP_phase2_n{1,2,3}_t20260524.png` pushed to output_port.
 | Linearized dynamics non-trivial sign check                 | ✅     | 0.2       |
 
 **Total after Phase 4.1: 57/57 passing (38 headless + 19 UI).**
+
+## Phase 4.2 — CARE solver (Hamiltonian matrix-sign method) + utilities
+
+| Test                                                  | Status | Time (ms) |
+|-------------------------------------------------------|--------|-----------|
+| CARE: P symmetric, diagonals positive                 | ✅     | 6.0       |
+| CARE: A^T P + PA - PBR^{-1}B^T P + Q residual < 1e-3  | ✅     | 2.4       |
+| LQR closed-loop shrinks >20× over 10 s                | ✅     | 11.1      |
+| LQR closed-loop eigenvalues in LHP (trace < 0)        | ✅     | 0.9       |
+| Heavier R → smaller \|\|K\|\|                         | ✅     | 1.2       |
+| Higher Q[θ] → larger \|K[θ]\|                         | ✅     | 1.2       |
+| matrixInvert round-trip A·A⁻¹ = I                     | ✅     | 0.2       |
+
+**Total after Phase 4.2: 64/64 passing (45 headless + 19 UI).**
