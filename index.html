@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inverted Pendulum on a Cart — Simulation</title>
+  <link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Top bar: mode selector + global controls -->
+    <header id="topbar">
+      <div class="mode-group">
+        <span class="label">Mode:</span>
+        <button class="mode-btn active" data-mode="1">1-link</button>
+        <button class="mode-btn" data-mode="2">2-link</button>
+        <button class="mode-btn" data-mode="3">3-link</button>
+      </div>
+      <div class="ctrl-group">
+        <button id="btn-playpause" class="ctrl-btn">⏸</button>
+        <button id="btn-reset" class="ctrl-btn">Reset</button>
+        <label class="speed-label">Speed
+          <input id="speed-slider" type="range" min="0.1" max="5" step="0.1" value="1">
+          <span id="speed-val">1.0×</span>
+        </label>
+      </div>
+    </header>
+
+    <!-- Main area: pendulum canvas (left) + parameter panel (right) -->
+    <main id="main">
+      <section id="canvas-pane">
+        <canvas id="pendulum-canvas" width="800" height="500"></canvas>
+        <div id="canvas-overlay">
+          <div id="hud">
+            <span id="hud-mode">n=1</span>
+            <span id="hud-t">t = 0.00 s</span>
+            <span id="hud-fps">— fps</span>
+          </div>
+        </div>
+      </section>
+
+      <aside id="panel-pane">
+        <div class="panel-group" data-group="physical">
+          <h3 class="panel-title">▾ Physical / Cart</h3>
+          <div class="panel-body"></div>
+        </div>
+        <div class="panel-group" data-group="sensor-actuator">
+          <h3 class="panel-title">▾ Sensor / Actuator</h3>
+          <div class="panel-body"></div>
+        </div>
+        <div class="panel-group" data-group="controller">
+          <h3 class="panel-title">▾ Controller</h3>
+          <div class="panel-body"></div>
+        </div>
+        <div class="panel-group" data-group="sim">
+          <h3 class="panel-title">▾ Simulation</h3>
+          <div class="panel-body"></div>
+        </div>
+
+        <div class="control-mode-group">
+          <label class="label">Control mode:</label>
+          <select id="control-mode-select">
+            <option value="off">Off (free)</option>
+            <option value="swingup">Swing-up only</option>
+            <option value="lqr">LQR only</option>
+            <option value="auto" selected>Auto (swing-up → LQR)</option>
+            <option value="sysid">Sys-ID</option>
+          </select>
+        </div>
+
+        <div class="preset-group">
+          <label class="label">Preset:</label>
+          <select id="preset-select">
+            <option value="default-1">Default 1-link</option>
+            <option value="default-2">Default 2-link</option>
+            <option value="default-3">Default 3-link</option>
+            <option value="noisy">Noisy sensors</option>
+            <option value="fast-motor">Fast motor</option>
+            <option value="stiff-triple">Stiff triple</option>
+          </select>
+          <button id="preset-save">Save</button>
+          <button id="preset-load">Load</button>
+        </div>
+
+        <div class="disturb-group">
+          <button id="btn-kick">Kick</button>
+          <label>Magnitude
+            <input id="kick-mag" type="range" min="0.1" max="20" step="0.1" value="5">
+          </label>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Plots area -->
+    <section id="plots-pane">
+      <div class="plot-cell">
+        <h4 class="plot-title">Angles (rad)</h4>
+        <canvas class="plot-canvas" id="plot-angles" width="400" height="180"></canvas>
+      </div>
+      <div class="plot-cell">
+        <h4 class="plot-title">Angular velocities (rad/s)</h4>
+        <canvas class="plot-canvas" id="plot-velocities" width="400" height="180"></canvas>
+      </div>
+      <div class="plot-cell">
+        <h4 class="plot-title">Phase portrait (θ vs θ̇)</h4>
+        <canvas class="plot-canvas" id="plot-phase" width="400" height="180"></canvas>
+      </div>
+      <div class="plot-cell">
+        <h4 class="plot-title">Control force u (N)</h4>
+        <canvas class="plot-canvas" id="plot-force" width="400" height="180"></canvas>
+      </div>
+    </section>
+
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
