@@ -7,7 +7,7 @@
 const DEFAULT_PARAMS = {
   // Cart
   m0: 1.0,           // [kg]
-  cart_viscous: 0.1, // [N s/m]
+  cart_visc: 0.1, // [N s/m]
   cart_coulomb: 0.0, // [N]
   g: 9.81,           // [m/s^2]
 

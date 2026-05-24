@@ -43,3 +43,14 @@ Auto-updated after each phase. Latest run is at the bottom.
 6 pass / 0 fail — 0.46 s.
 
 **Phase 2.1 + 2.2 combined: 13/13 headless tests, 1.16 s.**
+
+## Phase 2.3 — wire real physics into rAF loop
+
+| Test                                                | Status | Time (ms) |
+|-----------------------------------------------------|--------|-----------|
+| n=1 physics runs live, energy stays bounded (<2%)   | ✅     | 3657      |
+| mode switching keeps physics step alive (no NaN)    | ✅     | 1870      |
+
+Bug found and fixed during 2.3: state.js named friction parameter `cart_viscous` but the sympy-generated EOM reads `cart_visc` → undefined → NaN. Renamed to `cart_visc` for consistency.
+
+**Total after Phase 2.3: 21/21 passing (15 headless + 6 UI), 10.2 s.**

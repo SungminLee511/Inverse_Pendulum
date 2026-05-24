@@ -11,6 +11,8 @@ import {
 } from './state.js';
 import { setStep, onFrame, start } from './loop.js';
 import { buildStubPanels } from './ui/panel.js';
+import { getEOM, isReal } from './physics/index.js';
+import { step as stepInt, totalEnergy } from './physics/integrator.js';
 
 // --- DOM refs ---
 const canvas = document.getElementById('pendulum-canvas');
@@ -73,14 +75,16 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// --- Placeholder physics: just slowly oscillate the angles so the loop is visibly alive.
-// Real physics replaces this in Phase 2 via setStep('physics', ...).
+// --- Real physics step. For modes where the EOM module is still a placeholder
+//     (n=2 until Phase 8, n=3 until Phase 11), getEOM returns a damped-oscillation
+//     stub so the canvas stays visibly alive.
 setStep('physics', dt_sim => {
-  // dummy: damped oscillation around hanging
-  for (let i = 1; i <= state.n; i++) {
-    const target = Math.PI;
-    state.qdot[i] += (- (state.q[i] - target) * 4 - 0.5 * state.qdot[i]) * dt_sim;
-    state.q[i]   += state.qdot[i] * dt_sim;
+  const eom = getEOM(state.n);
+  const integrator = state.params.integrator || 'rk4';
+  const [qn, qdn] = stepInt(integrator, state.q, state.qdot, state.u_applied, dt_sim, state.params, eom);
+  // overwrite in place to keep references stable
+  for (let i = 0; i < state.q.length; i++) {
+    state.q[i] = qn[i]; state.qdot[i] = qdn[i];
   }
 });
 
@@ -122,7 +126,13 @@ function drawScene() {
 
   ctx.fillStyle = '#30363d';
   ctx.font = '10px ui-monospace, monospace';
-  ctx.fillText('Phase 1 skeleton — placeholder dynamics (real physics in P2)', 8, H - 8);
+  const real = isReal(state.n);
+  const E = real ? totalEnergy(state.q, state.qdot, state.params).toFixed(4) : '—';
+  const label = real
+    ? `Phase 2: real n=${state.n} EOM, integrator=${state.params.integrator}, E=${E} J`
+    : `Phase 2: n=${state.n} EOM placeholder (filled in Phase ${state.n === 2 ? 8 : 11})`;
+  ctx.fillText(label, 8, H - 8);
+  state.energy = real ? Number(E) : NaN;
 }
 setStep('render', drawScene);
 
