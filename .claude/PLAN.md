@@ -1,442 +1,423 @@
-# Inverted Pendulum on a Cart — Simulation Design Document
+# Inverted Pendulum on a Cart — Build Plan
 
-A single HTML/CSS/JS app simulating 1-, 2-, and 3-link inverted pendulums on a horizontally-driven cart. Includes energy-based swing-up, LQR stabilization with smooth handover, system identification via swing tests, adjustable physical/sensor/actuator/controller parameters, sensor and motor noise/delay/saturation, and real-time visualization with time-series, phase-portrait, and control-force plots.
+A single-page web app simulating 1-, 2-, and 3-link inverted pendulums on a horizontally-driven cart. Includes energy-based swing-up, LQR stabilization with smooth handover, system identification, adjustable physical/sensor/actuator/controller parameters, sensor and motor noise/delay/saturation, real-time visualization with time-series, phase-portrait, and control-force plots.
 
------
+Final delivery: static site mirrored into `TRASHCAN/SungminLee511.github.io/projects/inverse-pendulum/` and linked from the resume index.
 
-## 1. Project Goals
+---
 
-- **High-fidelity physics** for n ∈ {1, 2, 3} link inverted pendulums on a cart.
-- **Multi-rate timing**: sim step ≪ sensor sample ≪ control update ≪ render.
-- **Controllers**: energy-based swing-up + LQR stabilization with smooth handover.
-- **System identification**: excite the pendulum (swing/chirp/impulse), fit physical parameters from the response.
-- **Adjustable parameters**: masses, lengths, CoMs, inertias, gravity, friction, sensor noise, actuator dynamics, controller gains.
-- **Real-time visualization**: pendulum animation, angle/velocity time series, phase portraits, control-force plot.
-- **One HTML page** with a mode selector for 1/2/3 links. Pure frontend.
+## 0. Build target & decisions (locked in)
 
------
+- **Scope**: All 15 numeric phases + deployment phase (16 total).
+- **Subrepo**: Static copy into resume site after sim is finished (no git submodule).
+- **Resume mount point**: `projects/inverse-pendulum/` (linked from resume index).
+- **sympy derivation**: Run locally, emit JS files for M/C/G.
+- **Build stack**: Vanilla HTML/CSS/JS, no build step. `math.js` for matrix ops only if needed; otherwise hand-rolled.
+- **Testing**: Fully autonomous. Headless Node.js for physics/control, Playwright (headless Chromium) for UI. User reviews only at end of each phase (optional screenshot drop to output_port) and final live URL.
 
-## 2. Mathematical Foundations
+---
 
-### 2.1 Generalized coordinates
+## 1. Tech stack & repo layout
 
-For an n-link pendulum on a cart, use:
+**Stack**:
 
-- `x` — horizontal cart position [m]
+- Vanilla HTML / CSS / JS (no React, no Vite, no build step).
+- `<canvas>` for pendulum animation and all plots.
+- Optional `math.js` for matrix ops (CARE solver, eigendecomp); hand-rolled fallback for 4×4-ish.
+- No server. Pure static `index.html` + JS modules (ES modules via `<script type="module">`).
+- `sympy` (Python) offline to derive EOMs → emits JS code → pasted into `src/physics/nlink_N.js`.
+- Node.js + `vitest` (or plain `node --test`) for headless tests.
+- `playwright` for UI tests + screenshots.
+
+**Repo layout**:
+
+```
+index.html
+src/
+  main.js                — entry, rAF loop, mode switching
+  state.js               — global params + sim state
+  presets.js
+  physics/
+    nlink_1.js           — EOM for n=1 (sympy-generated)
+    nlink_2.js           — EOM for n=2 (sympy-generated)
+    nlink_3.js           — EOM for n=3 (sympy-generated)
+    integrator.js        — Forward Euler, Semi-Implicit Euler, RK4
+  control/
+    lqr.js               — linearization, Kleinman CARE solver, K
+    swingup.js           — energy-based (Aström)
+    tvlqr.js             — time-varying LQR for triple
+    pid.js               — single only
+    switcher.js          — region check + smooth blend
+    sysid.js
+  sensors.js
+  actuator.js
+  ui/
+    panel.js             — parameter controls
+    plots.js             — canvas plotting
+    canvas.js            — pendulum animation
+tools/
+  derive_eom.py          — sympy script that emits nlink_*.js
+  trajopt_triple.py      — offline trajectory optimization for triple swing-up
+tests/
+  energy.test.js
+  integrator_convergence.test.js
+  jacobian.test.js
+  lqr_stability.test.js
+  lqr_eigenvalues.test.js
+  handover.test.js
+  sensors.test.js
+  actuator.test.js
+  sysid.test.js
+  ui.spec.js             — Playwright
+  RESULTS.md             — generated test report
+.claude/
+  PLAN.md
+  SKILL.md
+package.json             — test deps only (node test runner + playwright)
+README.md
+```
+
+---
+
+## 2. Mathematical foundations
+
+### 2.1 Coordinates
+
+For an n-link pendulum on a cart:
+
+- `x` — cart position [m]
 - `θᵢ` for i = 1..n — angle of link i from upward vertical [rad]; θᵢ = 0 means link i points straight up.
 
-State vector: `q = [x, θ₁, ..., θₙ]ᵀ`. Full state `[q, q̇]` is 2(n+1)-dimensional (so 8-D for the triple).
+State vector `q = [x, θ₁, ..., θₙ]ᵀ`. Full state `[q, q̇]` is 2(n+1)-D (8-D for triple).
 
-**Sign conventions** (decide once, never deviate): angles measured from up, CCW positive in screen coordinates. Document at top of every file. Most physics bugs in this kind of project are sign errors.
+**Sign convention** (one-time decision, never deviate): angles measured from up, CCW positive in screen coordinates. Documented at the top of every physics file.
 
-### 2.2 Lagrangian mechanics
+### 2.2 Lagrangian → manipulator form
 
-For each link i — mass `mᵢ`, full length `Lᵢ`, CoM at distance `lᵢ` from the joint, inertia `Iᵢ` about CoM — compute the CoM position by accumulating through preceding links:
+For each link i with mass `mᵢ`, full length `Lᵢ`, CoM offset `lᵢ`, inertia `Iᵢ` about CoM:
 
-- Kinetic energy `T = ½ m₀ ẋ² + Σᵢ [½ mᵢ (ẋ_cᵢ² + ẏ_cᵢ²) + ½ Iᵢ ω_iᵢ²]`
-- Potential energy `V = Σᵢ mᵢ g y_cᵢ`
-- Lagrangian `L = T − V`
+- `T = ½ m₀ ẋ² + Σᵢ [½ mᵢ (ẋ_cᵢ² + ẏ_cᵢ²) + ½ Iᵢ ω_iᵢ²]`
+- `V = Σᵢ mᵢ g y_cᵢ`
+- `L = T − V`
 
-Euler–Lagrange yields the standard manipulator form:
+Euler–Lagrange → manipulator form:
 
 ```
 M(q) q̈ + C(q, q̇) q̇ + G(q) = B u + F_friction(q̇)
 ```
 
-- `M(q)` — (n+1)×(n+1) inertia matrix, symmetric positive-definite
-- `C(q, q̇) q̇` — Coriolis & centripetal terms
-- `G(q)` — gravity terms
-- `B = [1, 0, ..., 0]ᵀ` — actuation acts only on the cart
-- `u` — horizontal force on the cart [N]  ← **the control input is force, not velocity** (see §3.3)
+- `M(q)` symmetric positive-definite (n+1)×(n+1) inertia matrix
+- `C(q, q̇) q̇` Coriolis + centripetal
+- `G(q)` gravity
+- `B = [1, 0, ..., 0]ᵀ` — cart-only actuation
+- `u` — horizontal force on cart [N] (force, not velocity; see §4.3)
 
 Solve: `q̈ = M⁻¹ (B u − C q̇ − G − F_friction)`.
 
-### 2.3 Practical derivation strategy
+### 2.3 Derivation workflow
 
-Hand-deriving M, C, G for n = 2 is painful, for n = 3 nearly intolerable. Recommended workflow:
+`tools/derive_eom.py` runs sympy → emits `src/physics/nlink_{1,2,3}.js`. Each file exports plain JS functions:
 
-1. Use `sympy` (offline, in Python) to derive M(q), C(q, q̇), G(q) symbolically for each n.
-1. Have sympy emit JS/JSON code for the matrix entries.
-1. Paste those into the JS physics module as plain functions: `(q, q̇, params) → matrices`.
-1. **Sanity check**: with zero friction and zero input, total energy must be conserved (RK4 will drift slowly; visible drift over seconds means a derivation or integration bug).
+```js
+export function M(q, params) { ... }
+export function C(q, qdot, params) { ... }
+export function G(q, params) { ... }
+```
 
-Alternative: a generic recursive Newton–Euler implementation that loops over links. Cleaner code, but harder to debug if something is off. For this project, the hardcoded-per-n approach is more transparent.
+### 2.4 Integration
 
-### 2.4 Numerical integration
+Implement all three. Default RK4 at `dt_sim = 1e-4 s` (10 kHz):
 
-Choice of integrator drives realism. Implement and expose:
+| Integrator        | Cost/step | Energy behavior                 | Use         |
+|-------------------|-----------|---------------------------------|-------------|
+| Forward Euler     | 1 eval    | drifts upward (anti-gravity)    | demo only   |
+| Semi-implicit     | 1 eval    | bounded drift                   | OK fallback |
+| RK4               | 4 evals   | small drift, accurate           | default     |
 
-|Integrator                      |Cost / step|Energy behavior                  |Use        |
-|--------------------------------|-----------|---------------------------------|-----------|
-|Forward Euler                   |1 eval     |drifts upward (fake anti-gravity)|demo only  |
-|Semi-implicit (symplectic) Euler|1 eval     |bounded drift                    |OK fallback|
-|RK4                             |4 evals    |small drift, very accurate       |**default**|
+Expose integrator choice in UI for pedagogical side-by-side.
 
-**Default**: RK4 at sim step `dt_sim = 1 × 10⁻⁴ s` (10 kHz). The math is cheap enough — even n=3 at 10 kHz is well under a millisecond of CPU per render frame.
+### 2.5 Energy invariant
 
-Expose integrator choice in the UI so the user can demonstrate Euler vs RK4 quality side by side — useful pedagogically.
+In no-friction, no-input runs, total mechanical energy must be conserved. Used as headless test pass/fail.
 
-### 2.5 Energy as a debug invariant
+---
 
-In a no-friction, no-input run, total mechanical energy must be conserved. Plot E(t) optionally (hidden by default since you didn’t request it, but keep the computation available for debugging).
-
------
-
-## 3. Simulation Architecture
+## 3. Simulation architecture
 
 ### 3.1 Multi-rate timing
 
-Four independent rates:
+| Rate           | Default Hz | Period   | Role                          |
+|----------------|------------|----------|-------------------------------|
+| Physics        | 10000      | 0.1 ms   | ODE accuracy                  |
+| Sensor sample  | 500        | 2 ms     | Discretize state to controller|
+| Control update | 200        | 5 ms     | Compute motor command         |
+| Render         | 60         | 16.7 ms  | Canvas + plots                |
 
-|Rate               |Default Hz|Default period|Role                          |
-|-------------------|----------|--------------|------------------------------|
-|Physics integration|10 000    |0.1 ms        |ODE accuracy                  |
-|Sensor sampling    |500       |2 ms          |Discretize state to controller|
-|Control update     |200       |5 ms          |Compute motor command         |
-|Render             |60        |16.7 ms       |Draw canvas + plots           |
-
-All four are independently adjustable.
-
-Pattern per `requestAnimationFrame` tick:
-
-```
-deltaWallTime = now − lastFrame
-simAdvance = min(deltaWallTime, MAX_FRAME) × speedMultiplier
-while simAdvance > 0:
-    physicsStep(dt_sim)
-    sensorAccum += dt_sim
-    controlAccum += dt_sim
-    if sensorAccum ≥ dt_sensor:
-        sample sensors (noise + quantization + delay); sensorAccum -= dt_sensor
-    if controlAccum ≥ dt_control:
-        u_cmd = controller(latest_sensor_sample); controlAccum -= dt_control
-    simAdvance -= dt_sim
-render()
-```
-
-`speedMultiplier` (0.1× to 5×) gives slow-mo and fast-forward. Cap MAX_FRAME (e.g. 50 ms) so a backgrounded tab doesn’t try to catch up an enormous chunk of sim time on resume.
+All four user-adjustable. Per-rAF accumulator pattern (PLAN v1 §3.1). Cap `MAX_FRAME = 50 ms` to prevent backgrounded-tab catch-up.
 
 ### 3.2 Sensor model
 
-Each measurable channel (joint angles and cart position; velocities are *not* directly measured — controller estimates them by differencing or with an observer):
+Per channel (joint angles + cart position; velocities not directly measured):
 
-- **Quantization** — round to nearest LSB. E.g. 12-bit encoder = 4096 counts/rev = ~0.088°/count.
-- **Gaussian noise** — σ adjustable (defaults: 0.1° per angle, 1 mm cart).
-- **Delay** — small ring buffer; defaults 1–5 ms.
-- **Bias / drift** (optional, low priority).
+- Quantization to nearest LSB (configurable bits; default 12-bit encoder).
+- Gaussian noise (σ per channel; defaults 0.1° angle, 1 mm cart).
+- Delay ring buffer (default 1–5 ms).
+- Optional bias / drift (low priority).
 
-The controller never sees the true state — it sees the noised, quantized, delayed version. This is what makes the sim a meaningful pre-test of a real control loop.
-
-Velocity estimation options for the controller:
-
-- **Finite difference** of consecutive samples (noisy; needs a filter).
-- **Kalman filter / state observer** over the linearized model (cleaner, more code).
-- Default to filtered finite-difference; expose option to use an observer.
+Velocity estimation in controller: filtered finite-difference by default; observer (Kalman) as opt-in.
 
 ### 3.3 Actuator model
 
-The commanded force `u_cmd` (controller output) passes through:
+Commanded force → applied force passes through:
 
-- **Saturation**: clip to `[−F_max, F_max]`.
-- **Slew-rate limit**: `|du/dt| ≤ slew_max` (models motor current loop bandwidth).
-- **First-order lag**: `u_applied += (u_cmd − u_applied) · dt / τ_motor` (motor time constant ~1–20 ms).
-- **Static + viscous friction on the cart**: subtract a friction force opposing motion.
-- Optional: additive Gaussian force noise.
-
-**On force vs velocity as the control input**: real motors produce torque/force, not velocity. Commanding velocity assumes a perfect inner velocity loop, which hides motor dynamics and friction from the outer controller — fine for a textbook demo, dishonest for sim-to-real. Use force as the input; users who want a velocity command can build a velocity controller as a thin wrapper.
+- Saturation `[-F_max, +F_max]`.
+- Slew rate limit (motor current-loop bandwidth proxy).
+- First-order lag `τ_motor` (1–20 ms).
+- Cart friction (viscous + Coulomb).
+- Optional additive force noise.
 
 ### 3.4 Disturbances
 
-- **Kick button** — impulse on chosen link, magnitude slider.
-- **Click-and-drag** a link → applied force while held.
-- **Step disturbance** — constant lateral force for N seconds.
+- Kick button (impulse on chosen link, slider magnitude).
+- Click-and-drag a link (applied force while held).
+- Step disturbance (constant lateral force for N seconds).
 
-Essential for evaluating robustness and visualizing recovery behavior.
+---
 
------
+## 4. Control system design
 
-## 4. Control System Design
+### 4.1 LQR stabilization
 
-### 4.1 Stabilization: LQR
+Linearize EOM at `q = 0, q̇ = 0` (numerical Jacobian, finite-difference; recomputed on parameter change). Solve continuous-time algebraic Riccati equation with Kleinman iteration (warm-start from previous K). Gain `K = R⁻¹ Bᵀ P`. Law `u = −K x_state`.
 
-Linearize the EOM around the upright equilibrium `q = 0, q̇ = 0`:
+UI: Q diagonal sliders + scalar R + optional Q/R auto-tune button.
 
-```
-ẋ_state = A x_state + B u
-```
+### 4.2 Swing-up — single (Åström–Furuta)
 
-where `x_state = [x, θ₁, ..., θₙ, ẋ, θ̇₁, ..., θ̇ₙ]ᵀ`.
+`u = k · sign(θ̇ cosθ) · Ẽ` where `Ẽ = E − E*` and `E* = 2 m g l`. Pumps energy when below upright energy, removes when above.
 
-Compute A, B by symbolic differentiation of the EOM (offline, again with sympy) or by numerical Jacobian (finite differences). Numerical is fine since A, B must be recomputed whenever physical parameters change.
+### 4.3 Swing-up — double
 
-Solve the continuous-time algebraic Riccati equation (CARE):
+Energy-based + partial feedback linearization. Expect iteration.
 
-```
-AᵀP + PA − P B R⁻¹ Bᵀ P + Q = 0
-```
+### 4.4 Swing-up — triple (research-grade — see §6)
 
-Feedback gain `K = R⁻¹ Bᵀ P`. Control law: `u = −K x_state`.
+Plan A: energy-based (likely fails).
+Plan B: offline trajectory optimization in Python → TVLQR tracker.
+Plan C fallback: ship "near-upright start" mode and document.
 
-**CARE solver in JS**:
+### 4.5 Handover
 
-- **Kleinman iteration** — fixed-point given an initial stabilizing K. Simple to implement. Warm-start from the previous K when parameters change slightly.
-- **Schur method** — Hamiltonian matrix eigendecomposition. More robust but needs eigenvalue routines; pull in `math.js` or `numeric.js`.
+Region-of-attraction proxy: `|θᵢ| < θ_thresh`, `|θ̇ᵢ| < ω_thresh`, `|x|, |ẋ|` bounded. Linear blend `u_swingup ↔ u_LQR` over 50–100 ms to avoid discontinuous force step.
 
-Recommend Kleinman; bootstrap an initial K by hand (or by pole placement) for the defaults.
+---
 
-UI: expose `Q` diagonal (one slider per state weight) and a scalar `R`.
+## 5. System identification
 
-### 4.2 Swing-up: energy-based (single)
+- **Hang test** — small-angle period fit → constraint on m, l, I.
+- **Excitation** — chirp / PRBS / step / impulse on cart; log I/O.
+- **Fit** — output-error least squares against linear model.
+- **UI** — choose excitation, run, see estimated vs ground truth, "Apply to controller" / "Revert".
+- **Stretch** — online EKF for joint state+param estimation.
 
-Canonical method (Åström–Furuta). Pendulum total energy `E`; desired energy `E* = 2 m g l` (energy at the upright). Error `Ẽ = E − E*`.
+---
 
-Sketch:
+## 6. Testing strategy
 
-```
-u = k · sign( θ̇ cosθ ) · Ẽ
-```
+Two layers. Fully autonomous — no manual smoke tests required from user.
 
-Pumps energy when `Ẽ < 0`, removes when `Ẽ > 0`. Add saturation. Switch to LQR once near upright.
+### 6.1 Layer 1 — Headless Node.js tests (`tests/*.test.js`)
 
-### 4.3 Swing-up: double and triple
+Run via `node --test tests/` (or `npm test`). Each test imports the relevant module(s) directly (ES modules), runs sim, asserts.
 
-Significantly harder. Options:
+| Test                              | Asserts                                                                |
+|-----------------------------------|------------------------------------------------------------------------|
+| `energy.test.js`                  | n=1,2,3 zero-friction zero-input runs conserve E to <0.1% over 10 s    |
+| `integrator_convergence.test.js`  | Halving dt drops RK4 error by ~16× (order-4 convergence)               |
+| `jacobian.test.js`                | Numerical Jacobian matches sympy-analytical to 1e-6                    |
+| `lqr_stability.test.js`           | Start at perturbation → ‖state‖ → 0 within bound                       |
+| `lqr_eigenvalues.test.js`         | All closed-loop (A−BK) eigenvalues in LHP, damping ratio > 0.3         |
+| `controllability.test.js`         | rank([B, AB, A²B, ...]) = full for n=1,2,3                             |
+| `handover.test.js`                | Single from hanging → upright in 30 s with smooth blend                |
+| `sensors.test.js`                 | Noise / quant / delay statistics match spec                            |
+| `actuator.test.js`                | Saturation, slew, lag respond as designed                              |
+| `sysid.test.js`                   | Fit from known params recovers within 5% tolerance                     |
+| `robustness_sweep.test.js`        | Parameter sweep heatmap of LQR success across noise/delay/mass/length  |
 
-- **Partial feedback linearization** — feedback-linearize the actuated coordinate, design a controller for the underactuated remainder. Works for some double-pendulum configurations.
-- **Trajectory optimization** — solve offline for a feasible swing-up trajectory (direct collocation in Python). Track with **TVLQR** (time-varying LQR) or feedforward + LQR.
-- **RL** — the sim is an environment; train a policy. Out of scope but feasible.
+Total runtime target: < 30 s.
 
-**Honest expectations**:
+### 6.2 Layer 2 — Playwright UI tests (`tests/ui.spec.js`)
 
-- **Double**: energy-based shaping + partial feedback linearization is plausible. Expect to iterate.
-- **Triple**: research-grade. If energy-based fails (likely), fall back to a precomputed trajectory tracked with TVLQR. Stretch goal: “start from near upright” if full swing-up is too hard.
+- Load `index.html` in headless Chromium.
+- DOM assertions: every slider exists and emits input events; canvas non-empty after 1 s.
+- Mode switching 1 → 2 → 3 → 1, no console errors.
+- Click "Kick" → force plot shows spike.
+- Screenshot animation and plots → save to `tests/screenshots/`.
+- (Optional) Push screenshots to output_port at end of each UI phase.
 
-### 4.4 Handover from swing-up to LQR
+### 6.3 Triple-pendulum specific validation (Phases 12 & 13)
 
-“Region of attraction” proxy:
+**Stabilization (Phase 12)**:
+1. Closed-loop eigenvalues all in LHP with damping > 0.3 (else model bug).
+2. Controllability rank = 8.
+3. Robustness sweep: mass ±20%, length ±20%, friction ±50%, sensor noise σ ∈ {0, 0.1°, 0.5°, 1°}, delay ∈ {0, 2, 5, 10 ms}. Headless run per combo → success matrix written to `tests/RESULTS.md`.
+4. Q/R auto-tune: scripted diagonal-Q search; pick widest robustness margin.
 
-- All `|θᵢ| < θ_thresh` (e.g. 20° single, ~10° double, ~5° triple).
-- All `|θ̇ᵢ| < ω_thresh`.
-- `|x|, |ẋ|` bounded.
+**Swing-up (Phase 13)**:
+1. Plan A energy-based — try, log failure mode.
+2. Plan B `tools/trajopt_triple.py` (CasADi or scipy direct collocation): minimize ∫u²dt s.t. EOM, x(0)=hanging, x(T)=upright, |u|≤F_max. Dump `(x*(t), u*(t))` + TVLQR `K(t)` as JSON.
+3. In-browser tracker: `u = u*(t) − K(t)·(x − x*(t))`.
+4. Validation: perturb initial state, headless run, basin-of-attraction report.
+5. Plan C fallback: near-upright-start UI toggle if even TVLQR is flaky. Document honestly.
 
-Inside region → switch to LQR. To avoid bang switching: linearly blend `u_swingup` and `u_LQR` over a short window (~50–100 ms). This avoids a discontinuous force step that would otherwise itself excite the pendulum.
+### 6.4 Test report
 
-### 4.5 Per-mode notes
+`tests/RESULTS.md` is regenerated each test run. Contains per-test pass/fail, runtime, and triple-pendulum robustness matrix. Committed at end of each phase.
 
-- **Single (1-link)** — PID can also stabilize. LQR is one-line. Swing-up reliable.
-- **Double (2-link)** — PID alone won’t stabilize (two underactuated coordinates). LQR works. Swing-up is the interesting problem.
-- **Triple (3-link)** — LQR can stabilize from near upright if the model is accurate and noise is low. Sensitivity is high: 0.5° sensor noise and 5 ms delay can sink it. Swing-up is genuinely hard.
+---
 
------
+## 7. UI / UX
 
-## 5. System Identification
-
-You asked specifically for “swing tests to find parameters like mass and length.” Approach:
-
-### 5.1 Hang test (small-angle linearization)
-
-Hang the pendulum in the stable downward equilibrium. Give a small impulse. Observe the oscillation.
-
-For a single pendulum, period for small angles:
-
-```
-T = 2π √( I_eff / (m g l) )
-```
-
-Measure T from zero crossings → constraint relating m, l, I.
-
-Add a known reference mass and re-measure → break the ambiguity. Or weigh the cart known.
-
-For n > 1, the small-angle response is a linear ODE with n modes. Fit by least squares of the analytic mode solution to the observed angle traces.
-
-### 5.2 Excitation tests
-
-Drive the cart with a designed input — chirp (e.g. 0.1 → 5 Hz over 30 s), PRBS, or step. Log cart position and joint angles. Fit linear-model parameters from input/output by output-error or prediction-error methods.
-
-### 5.3 Online estimation (stretch)
-
-Augment the state with unknown parameters (slowly varying), use an Extended Kalman Filter to estimate state + params jointly.
-
-### 5.4 Sys-ID UI
-
-- Choose excitation: impulse / chirp / PRBS / step.
-- Run duration.
-- “Run sys-ID” → log data, fit, display estimated vs true (you have ground truth — perfect for validating the method).
-- “Apply fitted params to controller” / “Revert”.
-
-This is also useful as a teaching tool: shows how much excitation you need to identify which parameters.
-
------
-
-## 6. UI / UX Design
-
-### 6.1 Layout (single page)
+### 7.1 Layout
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Mode: [1-link] [2-link] [3-link]    [▶/⏸] [Reset] [Speed ×] │
 ├──────────────────────────┬──────────────────────────────────┤
-│                          │ Parameters                       │
-│   Pendulum canvas        │  ▾ Physical                      │
-│   (the animation)        │  ▾ Sensor / Actuator             │
-│                          │  ▾ Controller                    │
-│                          │  ▾ Sim                           │
+│   Pendulum canvas        │ Parameters                       │
+│                          │   ▾ Physical / Cart              │
+│                          │   ▾ Sensor / Actuator            │
+│                          │   ▾ Controller                   │
+│                          │   ▾ Sim                          │
 │                          ├──────────────────────────────────┤
-│                          │ Mode: Swing-up | Stabilize | SysID│
+│                          │ Mode: Swing-up / Stabilize / SysID│
 ├──────────────────────────┴──────────────────────────────────┤
 │  Plots: angles | velocities | phase portrait | control force │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 6.2 Parameters panel (collapsible groups, slider + numeric for each)
+### 7.2 Parameter panel groups (collapsible, slider + numeric per param)
 
-**Physical (per link i)**
+**Physical** (per link): m, L, l, I, joint friction (viscous + Coulomb).
+**Cart**: m₀, friction, gravity g.
+**Sensors**: noise σ per channel, quant bits, sample period, delay.
+**Actuator**: F_max, τ_motor, slew, force noise σ.
+**Controller**: mode (Swing-up / LQR / Auto), Q diagonals + R, PID Kp/Ki/Kd (single), handover thresholds, control period.
+**Sim**: integrator, dt_sim, speed multiplier, random seed.
 
-- mᵢ [kg] · Lᵢ [m] · lᵢ (CoM offset, default Lᵢ/2) · Iᵢ (default m L²/12) · joint viscous friction · joint Coulomb friction
+**Presets dropdown**: "Default 1-link", "Default 3-link", "Noisy sensors", "Fast motor", "Stiff triple", etc. Save/load to localStorage.
 
-**Cart**
+### 7.3 Plots (canvas, rolling 10 s, render at 30 Hz)
 
-- m₀ · cart viscous friction · cart Coulomb friction · gravity g
+- Angles vs t (one line per joint, color-coded).
+- Velocities vs t.
+- Phase portrait (θ vs θ̇ per joint, fading trail).
+- Control force vs t (with ±F_max dashed reference).
 
-**Sensors**
+### 7.4 Interactions
 
-- angle noise σ · cart position noise σ · quantization bits · sample period · delay
-
-**Actuator**
-
-- F_max · motor time constant τ · slew rate · force noise σ
-
-**Controller**
-
-- mode: Swing-up only / LQR only / Auto (swing-up → LQR)
-- LQR Q diagonals + R
-- (optional, single only) PID Kp/Ki/Kd
-- Handover thresholds
-- Control period
-
-**Sim**
-
-- Integrator (Euler / Semi-Implicit / RK4)
-- Sim step
-- Speed multiplier
-- Random seed (reproducible noise)
-
-**Presets dropdown**: “Default 1-link”, “Default 3-link”, “Noisy sensors”, “Fast motor”, “Stiff triple”, etc. Save/load to localStorage.
-
-### 6.3 Plots
-
-Custom canvas-drawn (don’t pull in chart.js — overkill, and harder to make smooth). Rolling 10-second window. Render at 30 Hz (every other frame).
-
-- **Angles vs t** — one line per joint, color-coded.
-- **Velocities vs t** — same.
-- **Phase portrait** — θ vs θ̇ per joint, fading trail (older points more transparent). Beautiful and informative.
-- **Control force vs t** — line plot with dashed `±F_max` reference lines.
-
-### 6.4 Interactions
-
-- Mouse drag a link → apply force while held (great for stress-testing).
-- “Kick” button with magnitude / direction / target-link selectors.
-- Drag the cart to set initial position.
+- Mouse drag a link → apply force while held.
+- "Kick" button (magnitude / direction / target-link).
+- Drag cart to set initial position.
 - Keyboard: `Space` pause, `R` reset, `K` kick, `1/2/3` switch modes.
 
------
+---
 
-## 7. Tech Stack & Implementation
+## 8. Development phases
 
-### 7.1 Stack
+16 phases. Each ends with: code committed + tests passing + `RESULTS.md` updated. No phase advances until previous passes its tests.
 
-- Vanilla HTML/CSS/JS (no framework needed; pick React/Svelte if more comfortable, but the rewards are small here).
-- `<canvas>` for both the pendulum animation and the plots.
-- Optional: `math.js` for matrix inverse, eigendecomposition. For 4×4 inverses and the CARE solver, hand-rolling is also fine.
-- No build step needed; can be a single `index.html` + a few JS files.
+### Phase 1 — Skeleton
+**Steps**: 1.1 `index.html` layout + CSS grid. 1.2 mode selector (1/2/3) wired to state. 1.3 blank canvas + rAF loop. 1.4 parameter panel scaffolding (empty groups). 1.5 `package.json` + node test runner + playwright install.
+**Tests**: Playwright DOM smoke (`ui.spec.js` minimal): page loads, mode buttons clickable, canvas exists.
 
-### 7.2 Module layout
+### Phase 2 — Physics: single
+**Steps**: 2.1 `tools/derive_eom.py` for n=1, emit `nlink_1.js`. 2.2 `integrator.js` (Euler, SI-Euler, RK4). 2.3 wire physics into rAF loop. 2.4 draw cart + link on canvas.
+**Tests**: `energy.test.js` (n=1), `integrator_convergence.test.js`, `jacobian.test.js` (n=1).
 
-```
-index.html
-src/
-  main.js           — entry, rAF loop, mode switching
-  physics/
-    nlink_1.js      — EOM for n=1 (from sympy)
-    nlink_2.js      — EOM for n=2
-    nlink_3.js      — EOM for n=3
-    integrator.js   — Euler, SI-Euler, RK4
-  control/
-    lqr.js          — A,B linearization, CARE solver, K
-    swingup.js      — energy-based
-    pid.js          — single only
-    switcher.js     — region check + blend
-    sysid.js
-  sensors.js
-  actuator.js
-  ui/
-    panel.js        — parameter controls
-    plots.js        — canvas plotting
-    canvas.js       — pendulum animation
-  presets.js
-  state.js          — global params + sim state
-```
+### Phase 3 — Sensor + actuator models
+**Steps**: 3.1 `sensors.js` (quant + Gaussian noise + delay buffer + finite-diff velocity). 3.2 `actuator.js` (saturation + slew + first-order lag + cart friction). 3.3 wire into rAF loop. 3.4 UI sliders for σ, F_max, τ, slew.
+**Tests**: `sensors.test.js`, `actuator.test.js`.
 
-### 7.3 Performance
+### Phase 4 — LQR: single
+**Steps**: 4.1 numerical Jacobian for A,B at upright. 4.2 Kleinman CARE solver (warm-start). 4.3 controller wiring (control update rate). 4.4 Q/R sliders.
+**Tests**: `lqr_eigenvalues.test.js` (n=1), `lqr_stability.test.js` (n=1), `controllability.test.js` (n=1).
 
-n=3 at 10 kHz sim, 60 Hz render → ~30 000 RK4 evals/sec, each a 4×4 matrix solve. Comfortably under a few ms per render frame on a laptop. If you ever hit a wall: move physics into a Web Worker, communicate state via `postMessage` or `SharedArrayBuffer`.
+### Phase 5 — Swing-up: single + handover
+**Steps**: 5.1 `swingup.js` Aström–Furuta law. 5.2 `switcher.js` region check + linear blend. 5.3 mode dropdown (Swing-up / LQR / Auto).
+**Tests**: `handover.test.js` (n=1): start hanging, finish upright within 30 s, ‖θ‖<5° final.
 
-### 7.4 Math helpers
+### Phase 6 — Plots
+**Steps**: 6.1 `plots.js` rolling-buffer canvas plot primitive. 6.2 angles, velocities, phase portrait, control force panels. 6.3 30 Hz render throttle.
+**Tests**: Playwright: each plot canvas has non-zero pixels after 2 s sim.
 
-- 4×4 matrix solve (LU or direct formula).
-- Continuous-time Riccati solver (Kleinman iteration recommended; warm-start from previous gain).
-- Small linear-algebra utilities (vec ops, transpose, multiply).
+### Phase 7 — Parameter UI
+**Steps**: 7.1 all collapsible groups populated with sliders + numeric inputs. 7.2 preset dropdown wired to localStorage. 7.3 keyboard shortcuts (Space, R, K, 1/2/3).
+**Tests**: Playwright: every slider mutates state; preset round-trip works; keyboard events fire.
 
------
+### Phase 8 — Physics: double
+**Steps**: 8.1 `derive_eom.py` for n=2, emit `nlink_2.js`. 8.2 canvas draws two links. 8.3 sympy-vs-numerical Jacobian sanity.
+**Tests**: `energy.test.js` (n=2), `jacobian.test.js` (n=2).
 
-## 8. Development Phases
+### Phase 9 — LQR: double
+**Steps**: 9.1 Jacobian + CARE for n=2. 9.2 Q diagonals updated.
+**Tests**: `lqr_eigenvalues.test.js` (n=2), `lqr_stability.test.js` (n=2), `controllability.test.js` (n=2).
 
-Build in order. Don’t move to phase n+1 until n is solid.
+### Phase 10 — Swing-up: double
+**Steps**: 10.1 energy-based + partial feedback linearization for n=2. 10.2 handover thresholds tightened. 10.3 iterate.
+**Tests**: `handover.test.js` (n=2): start hanging, finish upright. If swing-up cannot stabilize reliably, document specific failure regime.
 
-1. **Skeleton** — HTML layout, mode selector, blank canvas, parameter panel scaffolding.
-1. **Physics — single** — derive (sympy), RK4 integrator, free-dynamics animation, verify energy conservation.
-1. **Sensor + actuator models** — noise, quantization, delay, saturation, slew.
-1. **LQR — single** — linearize, solve CARE, stabilize from near-upright.
-1. **Swing-up — single** — energy-based, smooth handover to LQR.
-1. **Plots** — angles, velocities, phase portrait, control force.
-1. **Parameter UI** — all sliders, presets, save/load.
-1. **Physics — double** — derive, integrate, verify.
-1. **LQR — double** — stabilize.
-1. **Swing-up — double** — energy + partial feedback linearization. Expect iteration.
-1. **Physics — triple** — derive (this is the hardest derivation).
-1. **LQR — triple** — stabilize from near-upright.
-1. **Swing-up — triple** — try energy-based; on failure, build a precomputed trajectory + TVLQR tracker.
-1. **System identification** — drop/chirp tests, fitting, ground-truth comparison UI.
-1. **Polish** — keyboard shortcuts, presets library, optional Web Worker.
+### Phase 11 — Physics: triple
+**Steps**: 11.1 `derive_eom.py` for n=3 (hardest derivation). 11.2 canvas draws three links. 11.3 verify energy conservation extra-carefully (numerical condition number of M for triple is worse).
+**Tests**: `energy.test.js` (n=3), `jacobian.test.js` (n=3).
 
------
+### Phase 12 — LQR: triple
+**Steps**: 12.1 Jacobian + CARE for n=3. 12.2 controllability check (rank = 8). 12.3 Q/R auto-tune script. 12.4 robustness sweep (`robustness_sweep.test.js`) over mass/length/friction/noise/delay.
+**Tests**: `lqr_eigenvalues.test.js` (n=3), `lqr_stability.test.js` (n=3), `controllability.test.js` (n=3), robustness matrix in `RESULTS.md`.
 
-## 9. Pitfalls & Lessons
+### Phase 13 — Swing-up: triple
+**Steps**: 13.1 try energy-based, log failure. 13.2 `tools/trajopt_triple.py` direct collocation → JSON of `(x*(t), u*(t), K(t))`. 13.3 in-browser TVLQR tracker. 13.4 basin-of-attraction validation. 13.5 if all fail, ship "near-upright start" toggle + documented limitation.
+**Tests**: `triple_swingup.test.js`: from hanging → upright with TVLQR tracker; OR documented near-upright fallback in `RESULTS.md`.
 
-- **Sign conventions** — pick once, document at the top of every physics file, never deviate. Most physics bugs are sign errors.
-- **Integrator drift** — even RK4 drifts over minutes. Don’t run forever between resets if you’re checking energy.
-- **Handover transients** — discontinuous control output at swing-up → LQR switch *excites* the pendulum. Blend over ~50–100 ms.
-- **LQR + saturation** — when LQR commands beyond F_max, the controller “thinks” it’s pushing harder than it is. Add anti-windup or treat the saturated case explicitly (e.g. MPC handles this naturally; LQR does not).
+### Phase 14 — System identification
+**Steps**: 14.1 `sysid.js` excitation generators (impulse / chirp / PRBS / step). 14.2 fit routines (hang-test small-angle + output-error). 14.3 UI panel (choose excitation, run, see estimate vs truth, Apply / Revert).
+**Tests**: `sysid.test.js`: known-params round-trip within 5% tolerance.
+
+### Phase 15 — Polish
+**Steps**: 15.1 kick + click-drag disturbance. 15.2 full preset library. 15.3 keyboard shortcuts finalized. 15.4 optional Web Worker for physics (only if profiling demands). 15.5 README.md with quickstart + GIFs.
+**Tests**: Playwright full-flow regression: hanging → swing-up → LQR → kick → recover.
+
+### Phase 16 — Deployment to resume site
+**Steps**: 16.1 final Playwright screenshot pass → push samples to output_port for user review. 16.2 static copy `Inverse_Pendulum/` (everything except `.claude/`, `tests/`, `tools/`) → `TRASHCAN/SungminLee511.github.io/projects/inverse-pendulum/`. 16.3 add card on resume index linking to it. 16.4 verify path on GitHub Pages (relative asset URLs). 16.5 push resume; wait for Pages deploy; me curl the live URL and report 200 + sanity-check HTML.
+**Tests**: Live-URL fetch + grep for expected DOM markers; final screenshot from live URL pushed to output_port.
+
+---
+
+## 9. Pitfalls (carried from v1)
+
+- **Sign conventions** — pick once, document at top of every physics file. Most physics bugs are sign errors.
+- **Integrator drift** — even RK4 drifts over minutes; don't run forever between resets when checking energy.
+- **Handover transients** — discontinuous control output excites the pendulum; blend over 50–100 ms.
+- **LQR + saturation** — when LQR commands beyond F_max it can wind up; either add anti-windup or rely on the slew/lag to mask it.
 - **Triple sensitivity** — linearized triple is hair-trigger. 0.5° sensor noise + 5 ms delay can sink LQR. Tighten sensor params before blaming the controller.
-- **M(q) conditioning** — symmetric positive-definite by construction, but if you see NaNs check that L’s, m’s, I’s are all positive and that you didn’t mistype a sign.
-- **Tab throttling** — backgrounded tabs slow `requestAnimationFrame`. Cap MAX_FRAME or reset accumulators on resume so you don’t try to “catch up” several seconds of sim in one frame.
-- **Float precision** — JS doubles are fine.
-- **Premature optimization** — n=3 doesn’t need a Web Worker. Don’t add complexity until profiling says so.
+- **M(q) conditioning** — SPD by construction, but if NaNs appear check all m, L, I positive and no sign typos.
+- **Tab throttling** — backgrounded `requestAnimationFrame` slows down. Cap MAX_FRAME or reset accumulators on resume.
+- **Premature optimization** — n=3 doesn't need a Web Worker. Don't add complexity until profiling says so.
 
------
+---
 
-## 10. Looking Ahead (post-sim)
+## 10. Open questions / decide-later
 
-A brief note since you said not to focus on hardware now, but worth remembering:
+- Controller velocity estimate: filtered finite-difference (default) vs state observer (opt-in).
+- Replay / run save-load (not v1 unless requested).
+- Online EKF parameter estimation (stretch).
+- MPC option for saturation-aware control (easy to add post-v1).
 
-- The sim’s value for the hardware build depends entirely on how honestly it models reality. Keep friction, motor lag, sensor noise, and quantization realistic — those are the usual sim-to-real gaps.
-- The sim is also where you safely test what you wouldn’t on hardware: maximum disturbance, sensor dropouts, controller bugs, parameter mismatches.
+---
 
------
+## 11. Phase / step summary
 
-## Open questions / things to decide later
-
-- Should the controller’s velocity estimate come from finite differences or a state observer? (Default: filtered finite difference; observer as opt-in.)
-- Save/load runs for replay or controller comparison? (Not v1 unless you want it.)
-- Online Kalman parameter estimation? (Stretch.)
-- Optional MPC, since you didn’t pick it but it would handle saturation more gracefully than LQR? (Easy to add later if curiosity strikes.)
+- **Total phases**: 16 (15 build + 1 deployment).
+- **Total numbered steps across phases**: 67.
+- **Total headless tests**: 11 numeric + Playwright UI spec + robustness sweep + triple-swing-up dedicated.
+- **Live deliverable**: GitHub-Pages-hosted page at `SungminLee511.github.io/projects/inverse-pendulum/`, linked from resume index, with screenshots in output_port.
