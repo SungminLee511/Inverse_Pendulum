@@ -112,3 +112,18 @@ Screenshots `IP_phase2_n{1,2,3}_t20260524.png` pushed to output_port.
 | All ≥16 sliders present                               | ✅     | 979       |
 
 **Total after Phase 3 complete: 49/49 passing (30 headless + 19 UI), 12.7 s.**
+
+## Phase 4.1 — numerical Jacobian linearization (n=1)
+
+| Test                                                       | Status | Time (ms) |
+|------------------------------------------------------------|--------|-----------|
+| A is 4×4 with identity kinematic block + zero top-left     | ✅     | 2.1       |
+| B is 4-vec; B[0]=B[1]=0; B[2]>0 (force pushes cart right)  | ✅     | 0.4       |
+| Upright is unstable: A[3][1] > 0 (gravity tips away)       | ✅     | 0.3       |
+| Friction in Aqqd: A[2][2]<0, A[3][3]<0                     | ✅     | 0.4       |
+| Jacobian Richardson convergence: ε=1e-4 vs 1e-6 agree to 1e-7 | ✅  | 0.4       |
+| Controllability rank([B,AB,A²B,A³B]) = 4 for n=1           | ✅     | 0.5       |
+| A and B finite (no NaN/Inf)                                | ✅     | 1.3       |
+| Linearized dynamics non-trivial sign check                 | ✅     | 0.2       |
+
+**Total after Phase 4.1: 57/57 passing (38 headless + 19 UI).**
