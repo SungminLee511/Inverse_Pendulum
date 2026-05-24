@@ -1,6 +1,5 @@
-// main.js — entry point.
-// Phase 1 skeleton: state-driven mode selector + play/pause/reset/speed.
-// Draws a placeholder cart + n-link "always upright" stick figure. Physics in P2.
+// main.js — entry point. Wires DOM events to state and starts the rAF loop.
+// Physics, sensor, control steps register via loop.setStep() in later phases.
 
 import {
   state,
@@ -10,6 +9,7 @@ import {
   reset,
   on,
 } from './state.js';
+import { setStep, onFrame, start } from './loop.js';
 
 // --- DOM refs ---
 const canvas = document.getElementById('pendulum-canvas');
@@ -22,31 +22,25 @@ const btnReset = document.getElementById('btn-reset');
 const speedSlider = document.getElementById('speed-slider');
 const speedVal = document.getElementById('speed-val');
 
-// --- Mode buttons → state.setMode ---
+// --- Mode + global controls ---
 document.querySelectorAll('.mode-btn').forEach(b => {
   b.addEventListener('click', () => setMode(Number(b.dataset.mode)));
 });
+btnPlayPause.addEventListener('click', () => setRunning(!state.running));
+btnReset.addEventListener('click', () => reset());
+speedSlider.addEventListener('input', e => setSpeed(e.target.value));
 
-// State → mode button styling
 on('mode-change', n => {
   document.querySelectorAll('.mode-btn').forEach(b => {
     b.classList.toggle('active', Number(b.dataset.mode) === n);
   });
   hudMode.textContent = `n=${n}`;
 });
-
-// --- Play / pause / reset / speed ---
-btnPlayPause.addEventListener('click', () => setRunning(!state.running));
-btnReset.addEventListener('click', () => reset());
-speedSlider.addEventListener('input', e => setSpeed(e.target.value));
-
-on('running-change', running => {
-  btnPlayPause.textContent = running ? '⏸' : '▶';
-});
+on('running-change', running => { btnPlayPause.textContent = running ? '⏸' : '▶'; });
 on('speed-change', s => { speedVal.textContent = s.toFixed(1) + '×'; });
 on('reset', () => { hudT.textContent = 't = 0.00 s'; });
 
-// --- Keyboard shortcuts (final polish in P15 but cheap to wire now) ---
+// Keyboard shortcuts
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   switch (e.key) {
@@ -78,19 +72,31 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// --- Placeholder draw ---
-function drawPlaceholder(W, H) {
+// --- Placeholder physics: just slowly oscillate the angles so the loop is visibly alive.
+// Real physics replaces this in Phase 2 via setStep('physics', ...).
+setStep('physics', dt_sim => {
+  // dummy: damped oscillation around hanging
+  for (let i = 1; i <= state.n; i++) {
+    const target = Math.PI;
+    state.qdot[i] += (- (state.q[i] - target) * 4 - 0.5 * state.qdot[i]) * dt_sim;
+    state.q[i]   += state.qdot[i] * dt_sim;
+  }
+});
+
+// --- Placeholder render ---
+function drawScene() {
+  const W = canvas.getBoundingClientRect().width;
+  const H = canvas.getBoundingClientRect().height;
   ctx.clearRect(0, 0, W, H);
   const trackY = H * 0.7;
-  ctx.strokeStyle = '#30363d';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(20, trackY); ctx.lineTo(W - 20, trackY); ctx.stroke();
   ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
   for (let x = 40; x < W - 20; x += 60) {
     ctx.beginPath(); ctx.moveTo(x, trackY); ctx.lineTo(x, trackY + 6); ctx.stroke();
   }
-  // Cart at centre + state.q[0] (always 0 here)
-  const cartX = W / 2 + (state.q ? state.q[0] * 100 : 0);
+  const px_per_m = 200;
+  const cartX = W / 2 + state.q[0] * px_per_m;
   const cartY = trackY - 20;
   const cartW = 60, cartH = 28;
   ctx.fillStyle = '#1d242d'; ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5;
@@ -99,14 +105,11 @@ function drawPlaceholder(W, H) {
   ctx.fillStyle = '#79c0ff';
   ctx.beginPath(); ctx.arc(cartX, cartY - cartH / 2, 3, 0, Math.PI * 2); ctx.fill();
 
-  // Links from current state.q (still placeholder: just draw straight up)
   let px = cartX, py = cartY - cartH / 2;
-  const px_per_m = 200;
   const palette = ['#58a6ff', '#f0883e', '#3fb950'];
   for (let i = 0; i < state.n; i++) {
     const L = state.params.links[i].L;
-    const theta = state.q ? state.q[i + 1] : 0;
-    // theta from up, CCW positive. Screen Y is down → "up" is -y.
+    const theta = state.q[i + 1];
     const nx = px + L * Math.sin(theta) * px_per_m;
     const ny = py - L * Math.cos(theta) * px_per_m;
     ctx.strokeStyle = palette[i] || '#fff'; ctx.lineWidth = 4;
@@ -118,39 +121,23 @@ function drawPlaceholder(W, H) {
 
   ctx.fillStyle = '#30363d';
   ctx.font = '10px ui-monospace, monospace';
-  ctx.fillText('Phase 1 skeleton — physics not yet wired', 8, H - 8);
+  ctx.fillText('Phase 1 skeleton — placeholder dynamics (real physics in P2)', 8, H - 8);
 }
+setStep('render', drawScene);
 
-// --- rAF loop ---
-let lastFrame = 0, fpsAccum = 0, fpsCount = 0, lastFpsUpdate = 0;
-function tick(now) {
-  if (lastFrame === 0) lastFrame = now;
-  const dt = (now - lastFrame) / 1000;
-  lastFrame = now;
+// HUD updates each frame
+onFrame((now, dt) => {
+  hudT.textContent = `t = ${state.t.toFixed(2)} s`;
+  hudFps.textContent = state.fps.toFixed(0) + ' fps';
+});
 
-  fpsAccum += dt; fpsCount += 1;
-  if (now - lastFpsUpdate > 500) {
-    state.fps = fpsCount / fpsAccum;
-    hudFps.textContent = state.fps.toFixed(0) + ' fps';
-    fpsAccum = 0; fpsCount = 0; lastFpsUpdate = now;
-  }
-
-  if (state.running) {
-    state.t += dt * state.speed;
-    hudT.textContent = `t = ${state.t.toFixed(2)} s`;
-  }
-
-  const rect = canvas.getBoundingClientRect();
-  drawPlaceholder(rect.width, rect.height);
-  requestAnimationFrame(tick);
-}
-
-// Wake the canvas/HUD with the default mode
+// Initial DOM sync
 hudMode.textContent = `n=${state.n}`;
 btnPlayPause.textContent = state.running ? '⏸' : '▶';
 speedVal.textContent = state.speed.toFixed(1) + '×';
+hudT.textContent = 't = 0.00 s';
 
-requestAnimationFrame(tick);
+start();
 
-// Expose for debugging
+// Debug handle
 window.__pendulum = { state };
