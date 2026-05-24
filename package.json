@@ -1,0 +1,17 @@
+{
+  "name": "inverse-pendulum",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Inverted pendulum on a cart (1/2/3 link) — sim + LQR + swing-up + sysID.",
+  "scripts": {
+    "test": "node --test --test-reporter=spec tests/",
+    "test:headless": "node --test --test-reporter=spec tests/headless/",
+    "test:ui": "node --test --test-reporter=spec tests/ui/",
+    "report": "node tests/_report.js",
+    "serve": "node tests/_static_server.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.46.0"
+  }
+}
