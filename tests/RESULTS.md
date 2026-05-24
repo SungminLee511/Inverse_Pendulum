@@ -84,3 +84,20 @@ Screenshots `IP_phase2_n{1,2,3}_t20260524.png` pushed to output_port.
 | sensor_last + sensor_vel_est live in browser      | ✅     | 2160      |
 
 **Total after Phase 3.1: 35/35 passing (22 headless + 13 UI), 11.7 s.**
+
+## Phase 3.2 — actuator (sat + slew + lag + Coulomb + force noise)
+
+| Test                                                  | Status | Time (ms) |
+|-------------------------------------------------------|--------|-----------|
+| Saturation: u_cmd above F_max clips                   | ✅     | 1.5       |
+| Slew rate: 0→F_max in F_max/slew seconds              | ✅     | 1.4       |
+| First-order lag: step → ≈63% at t=τ, converges        | ✅     | 0.4       |
+| Coulomb friction opposes cart motion                  | ✅     | 0.2       |
+| Coulomb smooth near xdot=0 (no chatter)               | ✅     | 0.2       |
+| Force noise σ statistics match spec                   | ✅     | 5.4       |
+| Sat+slew+lag interplay converges to F_max             | ✅     | 0.3       |
+| Reset clears actuator state                           | ✅     | 0.3       |
+| Live: state.u_cmd → u_applied through actuator        | ✅     | 1733      |
+| Live: saturation clips u_cmd above F_max              | ✅     | 1543      |
+
+**Total after Phase 3.2: 45/45 passing (30 headless + 15 UI), 11.4 s.**
