@@ -11,7 +11,7 @@
 //
 // State held: last_u_cmd_pre_sat (for slew), u_applied (for lag).
 
-import { state } from './state.js';
+import { state, on } from './state.js';
 
 function mulberry32(seed) {
   let s = seed >>> 0;
@@ -96,6 +96,12 @@ export function initActuator(seed = state.params.seed || 42) {
     force_noise: p.force_noise,
     cart_coulomb: p.cart_coulomb,
     rng: mulberry32(seed),
+  });
+  // Reset actuator state on reset/mode-change so transients don't bleed across modes.
+  on('reset', () => _actuator && _actuator.reset());
+  on('mode-change', () => {
+    _actuator && _actuator.reset();
+    state.u_cmd = 0; state.u_applied = 0; state.u_effective = 0;
   });
 }
 

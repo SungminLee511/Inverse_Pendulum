@@ -100,20 +100,30 @@ on('param-change', ({ path, value }) => {
 });
 
 // --- Stub scaffolding so the panel is non-empty ---
-// (full set added in Phase 7)
+// (full physical/cart-per-link expansion happens in Phase 7)
 export function buildStubPanels() {
   // Physical / Cart
-  addSlider('physical', 'gravity g',  'g',  { min: 0, max: 20, step: 0.1, digits: 2 });
-  addSlider('physical', 'cart m₀',    'm0', { min: 0.1, max: 5, step: 0.05, digits: 2 });
+  addSlider('physical', 'gravity g',     'g',            { min: 0, max: 20, step: 0.1, digits: 2 });
+  addSlider('physical', 'cart m₀',       'm0',           { min: 0.1, max: 5, step: 0.05, digits: 2 });
+  addSlider('physical', 'cart viscous',  'cart_visc',    { min: 0, max: 2, step: 0.01, digits: 3 });
+  addSlider('physical', 'cart Coulomb',  'cart_coulomb', { min: 0, max: 5, step: 0.05, digits: 2 });
 
   // Sensor / Actuator
-  addSlider('sensor-actuator', 'F_max',    'F_max',       { min: 1, max: 100, step: 0.5, digits: 1 });
-  addSlider('sensor-actuator', 'τ motor',  'motor_tau',   { min: 0.0005, max: 0.05, step: 0.0005, digits: 4 });
-  addSlider('sensor-actuator', 'angle σ',  'angle_noise', { min: 0, max: 0.05, step: 0.0001, digits: 4 });
+  addSlider('sensor-actuator', 'F_max [N]',        'F_max',         { min: 1, max: 100, step: 0.5, digits: 1 });
+  addSlider('sensor-actuator', 'slew_max [N/s]',   'slew_max',      { min: 50, max: 50000, step: 50, digits: 0 });
+  addSlider('sensor-actuator', 'τ motor [s]',      'motor_tau',     { min: 0.0005, max: 0.05, step: 0.0005, digits: 4 });
+  addSlider('sensor-actuator', 'force σ',          'force_noise',   { min: 0, max: 5, step: 0.01, digits: 3 });
+  addSlider('sensor-actuator', 'angle σ [rad]',    'angle_noise',   { min: 0, max: 0.05, step: 0.0001, digits: 4 });
+  addSlider('sensor-actuator', 'cart σ [m]',       'cart_noise',    { min: 0, max: 0.02, step: 0.0001, digits: 4 });
+  addSlider('sensor-actuator', 'quant bits',       'quant_bits',    { min: 4, max: 20, step: 1, digits: 0 });
+  addSlider('sensor-actuator', 'sensor delay [s]', 'sensor_delay',  { min: 0, max: 0.02, step: 0.0005, digits: 4 });
+  addSlider('sensor-actuator', 'sensor T [s]',     'sensor_period', { min: 0.001, max: 0.02, step: 0.0005, digits: 4 });
 
   // Controller
   addSlider('controller', 'R (LQR)',          'R',                { min: 0.001, max: 1, step: 0.001, digits: 3 });
+  addSlider('controller', 'control T [s]',    'control_period',   { min: 0.001, max: 0.02, step: 0.0005, digits: 4 });
   addSlider('controller', 'handover θ thresh','handover_theta',   { min: 0.05, max: 1.0, step: 0.01, digits: 2 });
+  addSlider('controller', 'handover ω thresh','handover_omega',   { min: 0.1, max: 10, step: 0.1, digits: 2 });
 
   // Sim
   addSelect('sim', 'integrator', 'integrator', [
@@ -121,5 +131,5 @@ export function buildStubPanels() {
     { value: 'si_euler',  label: 'Semi-implicit Euler' },
     { value: 'rk4',       label: 'RK4 (default)' },
   ]);
-  addSlider('sim', 'dt_sim [ms]', 'dt_sim', { min: 0.00005, max: 0.005, step: 0.00005, digits: 5 });
+  addSlider('sim', 'dt_sim [s]', 'dt_sim', { min: 0.00005, max: 0.005, step: 0.00005, digits: 5 });
 }

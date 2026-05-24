@@ -101,3 +101,14 @@ Screenshots `IP_phase2_n{1,2,3}_t20260524.png` pushed to output_port.
 | Live: saturation clips u_cmd above F_max              | ✅     | 1543      |
 
 **Total after Phase 3.2: 45/45 passing (30 headless + 15 UI), 11.4 s.**
+
+## Phase 3.3 + 3.4 — actuator reset on mode-change + full param sliders
+
+| Test                                                  | Status | Time (ms) |
+|-------------------------------------------------------|--------|-----------|
+| Changing F_max slider changes saturation behaviour    | ✅     | 1442      |
+| Switching integrator to Euler keeps sim finite        | ✅     | 1492      |
+| Lowering angle σ to 0 reduces sensor noise variance   | ✅     | 1911      |
+| All ≥16 sliders present                               | ✅     | 979       |
+
+**Total after Phase 3 complete: 49/49 passing (30 headless + 19 UI), 12.7 s.**
