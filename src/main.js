@@ -10,6 +10,7 @@ import {
   on,
 } from './state.js';
 import { setStep, onFrame, start } from './loop.js';
+import { buildStubPanels } from './ui/panel.js';
 
 // --- DOM refs ---
 const canvas = document.getElementById('pendulum-canvas');
@@ -136,6 +137,8 @@ hudMode.textContent = `n=${state.n}`;
 btnPlayPause.textContent = state.running ? '⏸' : '▶';
 speedVal.textContent = state.speed.toFixed(1) + '×';
 hudT.textContent = 't = 0.00 s';
+
+buildStubPanels();
 
 start();
 
