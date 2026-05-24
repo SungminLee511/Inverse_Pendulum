@@ -1,14 +1,15 @@
-// main.js — entry point. Phase 1 skeleton: wires mode buttons and play/pause/reset
-// to dummy state, draws a placeholder frame on the canvas. Physics and controls
-// come in later phases.
+// main.js — entry point.
+// Phase 1 skeleton: state-driven mode selector + play/pause/reset/speed.
+// Draws a placeholder cart + n-link "always upright" stick figure. Physics in P2.
 
-const state = {
-  n: 1,
-  running: true,
-  speed: 1.0,
-  t: 0,
-  lastFrame: 0,
-};
+import {
+  state,
+  setMode,
+  setRunning,
+  setSpeed,
+  reset,
+  on,
+} from './state.js';
 
 // --- DOM refs ---
 const canvas = document.getElementById('pendulum-canvas');
@@ -21,31 +22,40 @@ const btnReset = document.getElementById('btn-reset');
 const speedSlider = document.getElementById('speed-slider');
 const speedVal = document.getElementById('speed-val');
 
-function setMode(n) {
-  state.n = n;
-  document.querySelectorAll('.mode-btn').forEach(b => {
-    b.classList.toggle('active', Number(b.dataset.mode) === n);
-  });
-  hudMode.textContent = `n=${n}`;
-}
-
+// --- Mode buttons → state.setMode ---
 document.querySelectorAll('.mode-btn').forEach(b => {
   b.addEventListener('click', () => setMode(Number(b.dataset.mode)));
 });
 
-btnPlayPause.addEventListener('click', () => {
-  state.running = !state.running;
-  btnPlayPause.textContent = state.running ? '⏸' : '▶';
+// State → mode button styling
+on('mode-change', n => {
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.mode) === n);
+  });
+  hudMode.textContent = `n=${n}`;
 });
 
-btnReset.addEventListener('click', () => {
-  state.t = 0;
-  hudT.textContent = 't = 0.00 s';
-});
+// --- Play / pause / reset / speed ---
+btnPlayPause.addEventListener('click', () => setRunning(!state.running));
+btnReset.addEventListener('click', () => reset());
+speedSlider.addEventListener('input', e => setSpeed(e.target.value));
 
-speedSlider.addEventListener('input', e => {
-  state.speed = Number(e.target.value);
-  speedVal.textContent = state.speed.toFixed(1) + '×';
+on('running-change', running => {
+  btnPlayPause.textContent = running ? '⏸' : '▶';
+});
+on('speed-change', s => { speedVal.textContent = s.toFixed(1) + '×'; });
+on('reset', () => { hudT.textContent = 't = 0.00 s'; });
+
+// --- Keyboard shortcuts (final polish in P15 but cheap to wire now) ---
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  switch (e.key) {
+    case ' ': e.preventDefault(); setRunning(!state.running); break;
+    case 'r': case 'R': reset(); break;
+    case '1': setMode(1); break;
+    case '2': setMode(2); break;
+    case '3': setMode(3); break;
+  }
 });
 
 // Collapsible panel groups
@@ -57,7 +67,7 @@ document.querySelectorAll('.panel-title').forEach(t => {
   });
 });
 
-// --- Canvas DPI handling ---
+// --- Canvas DPI ---
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -68,83 +78,60 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// --- Render loop (Phase 1: placeholder track + cart drawing) ---
-let fpsAccum = 0, fpsCount = 0, lastFpsUpdate = 0;
-
-function drawPlaceholder(rectW, rectH) {
-  ctx.clearRect(0, 0, rectW, rectH);
-
-  // Track
-  const trackY = rectH * 0.7;
+// --- Placeholder draw ---
+function drawPlaceholder(W, H) {
+  ctx.clearRect(0, 0, W, H);
+  const trackY = H * 0.7;
   ctx.strokeStyle = '#30363d';
   ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(20, trackY);
-  ctx.lineTo(rectW - 20, trackY);
-  ctx.stroke();
-
-  // Track ticks
-  ctx.strokeStyle = '#21262d';
-  ctx.lineWidth = 1;
-  for (let x = 40; x < rectW - 20; x += 60) {
-    ctx.beginPath();
-    ctx.moveTo(x, trackY);
-    ctx.lineTo(x, trackY + 6);
-    ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(20, trackY); ctx.lineTo(W - 20, trackY); ctx.stroke();
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let x = 40; x < W - 20; x += 60) {
+    ctx.beginPath(); ctx.moveTo(x, trackY); ctx.lineTo(x, trackY + 6); ctx.stroke();
   }
-
-  // Cart (centered) — placeholder
-  const cartX = rectW / 2;
+  // Cart at centre + state.q[0] (always 0 here)
+  const cartX = W / 2 + (state.q ? state.q[0] * 100 : 0);
   const cartY = trackY - 20;
   const cartW = 60, cartH = 28;
-  ctx.fillStyle = '#1d242d';
-  ctx.strokeStyle = '#58a6ff';
-  ctx.lineWidth = 1.5;
+  ctx.fillStyle = '#1d242d'; ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5;
   ctx.fillRect(cartX - cartW / 2, cartY - cartH / 2, cartW, cartH);
   ctx.strokeRect(cartX - cartW / 2, cartY - cartH / 2, cartW, cartH);
-
-  // Pivot
   ctx.fillStyle = '#79c0ff';
-  ctx.beginPath();
-  ctx.arc(cartX, cartY - cartH / 2, 3, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.beginPath(); ctx.arc(cartX, cartY - cartH / 2, 3, 0, Math.PI * 2); ctx.fill();
 
-  // Placeholder pendulum: n links, all pointing up
+  // Links from current state.q (still placeholder: just draw straight up)
   let px = cartX, py = cartY - cartH / 2;
-  const linkLen = 90;
+  const px_per_m = 200;
+  const palette = ['#58a6ff', '#f0883e', '#3fb950'];
   for (let i = 0; i < state.n; i++) {
-    const nx = px;
-    const ny = py - linkLen;
-    ctx.strokeStyle = ['#58a6ff', '#f0883e', '#3fb950'][i] || '#fff';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(px, py);
-    ctx.lineTo(nx, ny);
-    ctx.stroke();
+    const L = state.params.links[i].L;
+    const theta = state.q ? state.q[i + 1] : 0;
+    // theta from up, CCW positive. Screen Y is down → "up" is -y.
+    const nx = px + L * Math.sin(theta) * px_per_m;
+    const ny = py - L * Math.cos(theta) * px_per_m;
+    ctx.strokeStyle = palette[i] || '#fff'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(nx, ny); ctx.stroke();
     ctx.fillStyle = '#e6edf3';
-    ctx.beginPath();
-    ctx.arc(nx, ny, 5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(nx, ny, 5, 0, Math.PI * 2); ctx.fill();
     px = nx; py = ny;
   }
 
-  // Watermark
   ctx.fillStyle = '#30363d';
   ctx.font = '10px ui-monospace, monospace';
-  ctx.fillText('Phase 1 skeleton — physics not yet wired', 8, rectH - 8);
+  ctx.fillText('Phase 1 skeleton — physics not yet wired', 8, H - 8);
 }
 
+// --- rAF loop ---
+let lastFrame = 0, fpsAccum = 0, fpsCount = 0, lastFpsUpdate = 0;
 function tick(now) {
-  if (state.lastFrame === 0) state.lastFrame = now;
-  const dt = (now - state.lastFrame) / 1000;
-  state.lastFrame = now;
+  if (lastFrame === 0) lastFrame = now;
+  const dt = (now - lastFrame) / 1000;
+  lastFrame = now;
 
-  // FPS
-  fpsAccum += dt;
-  fpsCount += 1;
+  fpsAccum += dt; fpsCount += 1;
   if (now - lastFpsUpdate > 500) {
-    const fps = fpsCount / fpsAccum;
-    hudFps.textContent = fps.toFixed(0) + ' fps';
+    state.fps = fpsCount / fpsAccum;
+    hudFps.textContent = state.fps.toFixed(0) + ' fps';
     fpsAccum = 0; fpsCount = 0; lastFpsUpdate = now;
   }
 
@@ -155,13 +142,15 @@ function tick(now) {
 
   const rect = canvas.getBoundingClientRect();
   drawPlaceholder(rect.width, rect.height);
-
   requestAnimationFrame(tick);
 }
 
-// Init
-setMode(1);
+// Wake the canvas/HUD with the default mode
+hudMode.textContent = `n=${state.n}`;
+btnPlayPause.textContent = state.running ? '⏸' : '▶';
+speedVal.textContent = state.speed.toFixed(1) + '×';
+
 requestAnimationFrame(tick);
 
-// Expose for debugging / tests
+// Expose for debugging
 window.__pendulum = { state };
