@@ -11,8 +11,9 @@ import {
 } from './state.js';
 import { setStep, onFrame, start } from './loop.js';
 import { buildStubPanels } from './ui/panel.js';
-import { getEOM, isReal } from './physics/index.js';
-import { step as stepInt, totalEnergy } from './physics/integrator.js';
+import { getEOM } from './physics/index.js';
+import { step as stepInt } from './physics/integrator.js';
+import { initCanvas, render as renderCanvas } from './ui/canvas.js';
 
 // --- DOM refs ---
 const canvas = document.getElementById('pendulum-canvas');
@@ -64,16 +65,8 @@ document.querySelectorAll('.panel-title').forEach(t => {
   });
 });
 
-// --- Canvas DPI ---
-function resizeCanvas() {
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.floor(rect.width * dpr);
-  canvas.height = Math.floor(rect.height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
+// --- Canvas (DPI + draw routines extracted to ui/canvas.js) ---
+initCanvas(canvas);
 
 // --- Real physics step. For modes where the EOM module is still a placeholder
 //     (n=2 until Phase 8, n=3 until Phase 11), getEOM returns a damped-oscillation
@@ -88,53 +81,7 @@ setStep('physics', dt_sim => {
   }
 });
 
-// --- Placeholder render ---
-function drawScene() {
-  const W = canvas.getBoundingClientRect().width;
-  const H = canvas.getBoundingClientRect().height;
-  ctx.clearRect(0, 0, W, H);
-  const trackY = H * 0.7;
-  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(20, trackY); ctx.lineTo(W - 20, trackY); ctx.stroke();
-  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
-  for (let x = 40; x < W - 20; x += 60) {
-    ctx.beginPath(); ctx.moveTo(x, trackY); ctx.lineTo(x, trackY + 6); ctx.stroke();
-  }
-  const px_per_m = 200;
-  const cartX = W / 2 + state.q[0] * px_per_m;
-  const cartY = trackY - 20;
-  const cartW = 60, cartH = 28;
-  ctx.fillStyle = '#1d242d'; ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5;
-  ctx.fillRect(cartX - cartW / 2, cartY - cartH / 2, cartW, cartH);
-  ctx.strokeRect(cartX - cartW / 2, cartY - cartH / 2, cartW, cartH);
-  ctx.fillStyle = '#79c0ff';
-  ctx.beginPath(); ctx.arc(cartX, cartY - cartH / 2, 3, 0, Math.PI * 2); ctx.fill();
-
-  let px = cartX, py = cartY - cartH / 2;
-  const palette = ['#58a6ff', '#f0883e', '#3fb950'];
-  for (let i = 0; i < state.n; i++) {
-    const L = state.params.links[i].L;
-    const theta = state.q[i + 1];
-    const nx = px + L * Math.sin(theta) * px_per_m;
-    const ny = py - L * Math.cos(theta) * px_per_m;
-    ctx.strokeStyle = palette[i] || '#fff'; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(nx, ny); ctx.stroke();
-    ctx.fillStyle = '#e6edf3';
-    ctx.beginPath(); ctx.arc(nx, ny, 5, 0, Math.PI * 2); ctx.fill();
-    px = nx; py = ny;
-  }
-
-  ctx.fillStyle = '#30363d';
-  ctx.font = '10px ui-monospace, monospace';
-  const real = isReal(state.n);
-  const E = real ? totalEnergy(state.q, state.qdot, state.params).toFixed(4) : '—';
-  const label = real
-    ? `Phase 2: real n=${state.n} EOM, integrator=${state.params.integrator}, E=${E} J`
-    : `Phase 2: n=${state.n} EOM placeholder (filled in Phase ${state.n === 2 ? 8 : 11})`;
-  ctx.fillText(label, 8, H - 8);
-  state.energy = real ? Number(E) : NaN;
-}
-setStep('render', drawScene);
+setStep('render', renderCanvas);
 
 // HUD updates each frame
 onFrame((now, dt) => {

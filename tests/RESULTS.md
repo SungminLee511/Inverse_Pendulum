@@ -54,3 +54,16 @@ Auto-updated after each phase. Latest run is at the bottom.
 Bug found and fixed during 2.3: state.js named friction parameter `cart_viscous` but the sympy-generated EOM reads `cart_visc` → undefined → NaN. Renamed to `cart_visc` for consistency.
 
 **Total after Phase 2.3: 21/21 passing (15 headless + 6 UI), 10.2 s.**
+
+## Phase 2.4 — extracted canvas renderer (ui/canvas.js)
+
+| Test                                                       | Status | Time (ms) |
+|------------------------------------------------------------|--------|-----------|
+| canvas draws ground/cart/link for n=1 (>15 distinct colors)| ✅     | 1496      |
+| n=2 mode draws orange link 2                               | ✅     | 1532      |
+| n=3 mode draws green link 3                                | ✅     | 1505      |
+| cart centroid shifts left when q[0]: 0.4 → -0.4            | ✅     | 1307      |
+
+Screenshots `IP_phase2_n{1,2,3}_t20260524.png` pushed to output_port.
+
+**Total after Phase 2.4: 25/25 passing (15 headless + 10 UI), 10.9 s.**
