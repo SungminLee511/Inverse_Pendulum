@@ -14,6 +14,7 @@ import { buildStubPanels } from './ui/panel.js';
 import { getEOM } from './physics/index.js';
 import { step as stepInt } from './physics/integrator.js';
 import { initCanvas, render as renderCanvas } from './ui/canvas.js';
+import { initSensors, sensorTick } from './sensors.js';
 
 // --- DOM refs ---
 const canvas = document.getElementById('pendulum-canvas');
@@ -81,6 +82,8 @@ setStep('physics', dt_sim => {
   }
 });
 
+setStep('sensor', sensorTick);
+
 setStep('render', renderCanvas);
 
 // HUD updates each frame
@@ -96,6 +99,7 @@ speedVal.textContent = state.speed.toFixed(1) + '×';
 hudT.textContent = 't = 0.00 s';
 
 buildStubPanels();
+initSensors();
 
 start();
 

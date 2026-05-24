@@ -67,3 +67,20 @@ Bug found and fixed during 2.3: state.js named friction parameter `cart_viscous`
 Screenshots `IP_phase2_n{1,2,3}_t20260524.png` pushed to output_port.
 
 **Total after Phase 2.4: 25/25 passing (15 headless + 10 UI), 10.9 s.**
+
+## Phase 3.1 — sensor model (quant + noise + delay + velocity FD)
+
+| Test                                              | Status | Time (ms) |
+|---------------------------------------------------|--------|-----------|
+| quantize: rounds to nearest LSB                   | ✅     | 1.5       |
+| Gaussian noise: mean~0 std~σ over 20k samples     | ✅     | 6.9       |
+| Sensor delay buffer returns value from delay ago  | ✅     | 0.5       |
+| delaySec=0 returns latest push                    | ✅     | 0.2       |
+| Noise statistics over 10k: mean+std match spec    | ✅     | 7.8       |
+| Quantization is applied at LSB granularity        | ✅     | 0.2       |
+| FD velocity estimator tracks 5 m/s ramp           | ✅     | 0.8       |
+| FD velocity rejects noise on stationary input     | ✅     | 0.5       |
+| Same seed → identical noisy sample stream         | ✅     | 0.4       |
+| sensor_last + sensor_vel_est live in browser      | ✅     | 2160      |
+
+**Total after Phase 3.1: 35/35 passing (22 headless + 13 UI), 11.7 s.**
