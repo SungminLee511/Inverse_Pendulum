@@ -17,7 +17,7 @@ import { initCanvas, render as renderCanvas } from './ui/canvas.js';
 import { initSensors, sensorTick } from './sensors.js';
 import { initActuator, actuatorTick, _resetActuator } from './actuator.js';
 import { initController, controllerTick, markDirty as markKDirty, getK } from './control/controller.js';
-import { initPlots, plotsSampleTick, renderPlots } from './ui/plots.js';
+import { initPlots, plotsSampleTick, renderPlots, _internal as _plotsInternal } from './ui/plots.js';
 
 // --- DOM refs ---
 const canvas = document.getElementById('pendulum-canvas');
@@ -130,4 +130,5 @@ start();
 
 // Debug handle
 import { setParam } from './state.js';
-window.__pendulum = { state, setParam, markKDirty, getK, _resetActuator, doKick };
+window.__pendulum = { state, setParam, markKDirty, getK, _resetActuator, doKick,
+  getPlotBuffers: () => _plotsInternal.getBuffers() };

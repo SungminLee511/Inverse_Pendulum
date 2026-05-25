@@ -3,6 +3,7 @@
 // Phases 8 and 11 fill them in.
 
 import * as eom1 from './nlink_1.js';
+import * as eom2 from './nlink_2.js';
 
 const placeholder = {
   N: null, DOF: null,
@@ -25,7 +26,7 @@ const placeholder = {
 
 const MODULES = {
   1: eom1,
-  2: placeholder,    // Phase 8 replaces this
+  2: eom2,
   3: placeholder,    // Phase 11 replaces this
 };
 

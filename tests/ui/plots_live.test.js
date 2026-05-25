@@ -116,6 +116,7 @@ test('Phase plot trail accumulates over time (more bright px later)', async () =
 
 test('Plot buffers clear on mode change', async () => {
   const { srv, browser, page } = await setup();
+  // Build up plot history with n=1 + controller off (so angles vary).
   await page.evaluate(() => {
     const s = window.__pendulum.state;
     s.params.ctrl_mode = 'auto';
@@ -123,22 +124,22 @@ test('Plot buffers clear on mode change', async () => {
     s.speed = 5.0;
   });
   await page.waitForTimeout(800);
-  await page.locator('.mode-btn[data-mode="2"]').click();
-  // Right after a mode change, buffers should be empty → very few coloured px.
+  // Pause sim AROUND the mode-change so the buffer-clear is observable.
+  // Use the play/pause button so the 'running-change' event fires (a bare
+  // assignment to state.running bypasses the pub/sub bridge into loop.js).
+  await page.locator('#btn-playpause').click();
   await page.waitForTimeout(40);
-  const px = await page.evaluate(() => {
-    const cv = document.getElementById('plot-angles');
-    const ctx = cv.getContext('2d');
-    const im = ctx.getImageData(0, 0, cv.width, cv.height);
-    let n = 0;
-    // Count only "data" pixels — bright blue/orange/green ribbons.
-    for (let i = 0; i < im.data.length; i += 4) {
-      const r = im.data[i], g = im.data[i+1], b = im.data[i+2];
-      // bright blue line ≈ (88, 166, 255) — match with tolerance
-      if (Math.abs(r - 88) < 40 && Math.abs(g - 166) < 40 && Math.abs(b - 255) < 40) n++;
-    }
-    return n;
+  await page.locator('.mode-btn[data-mode="2"]').click();
+  await page.waitForTimeout(60);
+  // Examine the buffer directly: TimeSeries.n should be 0 just after mode-
+  // change before sim resumes pushing new samples.
+  const bufN = await page.evaluate(() => {
+    const b = window.__pendulum.getPlotBuffers();
+    return { angles: b.angles.n, vels: b.velocities.n, force: b.force.n, phase: b.phase.n };
   });
-  assert.ok(px < 20, `angles buffer drained on mode-change (got ${px} blue px)`);
+  assert.equal(bufN.angles, 0,  `angles buffer cleared after mode-change (n=${bufN.angles})`);
+  assert.equal(bufN.vels,   0,  `velocities buffer cleared (n=${bufN.vels})`);
+  assert.equal(bufN.force,  0,  `force buffer cleared (n=${bufN.force})`);
+  assert.equal(bufN.phase,  0,  `phase buffer cleared (n=${bufN.phase})`);
   await browser.close(); await srv.close();
 });

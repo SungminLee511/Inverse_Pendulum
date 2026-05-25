@@ -237,3 +237,33 @@ throttle so changing sensor_period doesn't blow the ring), render throttled to
 | Total slider count ≥ 22 (mode 1)                                  | ✅     | 1224      |
 
 **Total after Phase 7 complete: 97/97 passing (60 headless + 37 UI).**
+
+## Phase 8 — Physics: double (n=2)
+
+`tools/derive_eom.py 2` → `src/physics/nlink_2.js`. Registered in
+`physics/index.js`. Canvas already draws n links generically.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| n=2 EOM exports correct N (=2) and DOF (=3)                       | ✅     | 1.4       |
+| M(q) is symmetric across random q, qdot                           | ✅     | 1.6       |
+| M(q) is positive-definite (Sylvester criterion)                   | ✅     | 0.4       |
+| At q=0 (upright), G is exactly zero                               | ✅     | 0.3       |
+| At hanging (θ=π, π), G is exactly zero                            | ✅     | 0.2       |
+| qddot at upright, zero qdot, zero u, no friction → zero           | ✅     | 0.5       |
+| qddot signs at hanging with θ_1 perturb: gravity tips link        | ✅     | 0.2       |
+| Friction Dqdot is diagonal                                        | ✅     | 0.3       |
+| n=2 RK4 conserves energy to <0.5% over 10 s (frictionless)        | ✅     | 190       |
+| n=2 RK4 with friction dissipates energy monotonically             | ✅     | 104       |
+| linearize(2): A is 6×6, B is 6-vec with cart-only actuation       | ✅     | 2.6       |
+| linearize(2): Richardson eps=1e-4 vs 1e-6 agree to 1e-5           | ✅     | 0.6       |
+| linearize(2): top-right block = identity exactly                  | ✅     | 1.1       |
+| linearize(2): upright is unstable (∂qddot/∂θ > 0 somewhere)       | ✅     | 0.3       |
+| linearize(2): friction → negative diag in lower-right             | ✅     | 0.3       |
+| controllability rank(n=2) = 6 (full)                              | ✅     | 0.7       |
+| A and B are finite (no NaN / Inf)                                 | ✅     | 0.3       |
+| Switching to n=2 runs real physics: energy bounded, no NaN        | ✅     | 2492      |
+| LQR for n=2 produces a valid 6-vector gain                        | ✅     | 1456      |
+| Canvas: two links visible after mode switch (orange + blue px)    | ✅     | 1714      |
+
+**Total after Phase 8 complete: 117/117 passing (77 headless + 40 UI).**
