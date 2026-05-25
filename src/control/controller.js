@@ -10,10 +10,13 @@
 import { state, on } from '../state.js';
 import { linearize, solveCARE } from './lqr.js';
 import { isReal } from '../physics/index.js';
+import { swingupU, resetSwingup } from './swingup.js';
+import { HandoverSwitcher } from './switcher.js';
 
 let _K = null;           // current gain vector (length n_state)
 let _Kn = -1;            // mode the gain was computed for
 let _dirty = true;       // recompute on next tick
+let _switcher = new HandoverSwitcher();   // swingup ↔ LQR handover
 
 function recompute() {
   if (!isReal(state.n)) { _K = null; _Kn = state.n; _dirty = false; return; }
@@ -44,7 +47,15 @@ function recompute() {
 
 export function initController() {
   recompute();
-  on('mode-change', () => { _dirty = true; });
+  on('mode-change', () => {
+    _dirty = true;
+    _switcher.reset();
+    resetSwingup();
+  });
+  on('reset', () => {
+    _switcher.reset();
+    resetSwingup();
+  });
   on('param-change', ({ path }) => {
     // Only physical / actuator / control gain params affect K.
     if (path.startsWith('R') || path === 'g' || path === 'm0' || path === 'cart_visc'
@@ -70,31 +81,42 @@ function readXState() {
   return x;
 }
 
-/** LQR control law: u = -K x_state. Wraps angles around 0 (upright) so
- *  the LQR error doesn't blow up when we pass through θ = π.
- *  Phase 4 always runs LQR; Phase 5 will gate this with a mode + handover. */
-export function controllerTick() {
-  if (_dirty) recompute();
-  if (!_K) { state.u_cmd = 0; return; }
+function lqrU() {
+  if (!_K) return 0;
   const x = readXState();
-  // Wrap angle indices to (-π, π] so they're "centered on upright"
   for (let i = 1; i <= state.n; i++) {
     let a = x[i];
     while (a >  Math.PI) a -= 2 * Math.PI;
     while (a < -Math.PI) a += 2 * Math.PI;
     x[i] = a;
   }
-  // Mode gating: Phase 4 only honors 'lqr' and 'auto'. 'off' leaves u_cmd
-  // untouched (so external code / tests can drive it directly). 'swingup'/'sysid'
-  // are filled in by later phases and currently just write 0.
-  const m = state.params.ctrl_mode;
-  if (m === 'off') return;
-  if (m !== 'lqr' && m !== 'auto') { state.u_cmd = 0; return; }
-  // Outside the handover region we don't trust the LQR linearization. For Phase 4
-  // we still apply LQR (it's the only controller); Phase 5's switcher will gate this.
   let u = 0;
   for (let i = 0; i < _K.length; i++) u -= _K[i] * x[i];
-  state.u_cmd = u;
+  const F_max = state.params.F_max || 30;
+  return Math.max(-F_max, Math.min(F_max, u));
+}
+
+function swU() {
+  return swingupU(state.n, state.q, state.qdot, state.params, state.t);
+}
+
+/** Controller dispatcher.
+ *  - 'off'     : leave state.u_cmd alone (tests / scripts may drive it)
+ *  - 'lqr'     : raw LQR (clipped)  — for steady-state demos / lqr_live tests
+ *  - 'swingup' : raw swingup (no handover) — pedagogical
+ *  - 'auto'    : swingup → blend → LQR via the HandoverSwitcher
+ *  - 'sysid'   : reserved for Phase 14
+ */
+export function controllerTick() {
+  if (_dirty) recompute();
+  const m = state.params.ctrl_mode;
+  if (m === 'off') return;
+  if (m === 'lqr') { state.u_cmd = lqrU(); return; }
+  if (m === 'swingup') { state.u_cmd = swU(); return; }
+  if (m === 'sysid') { state.u_cmd = 0; return; }   // Phase 14
+  // 'auto' (default) — blended
+  if (!_K) { state.u_cmd = swU(); return; }   // can't LQR without K
+  state.u_cmd = _switcher.mix(state.t, state.q, state.qdot, state.params, swU, lqrU);
 }
 
 /** Expose the current gain for diagnostics / tests. */

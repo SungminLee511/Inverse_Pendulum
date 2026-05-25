@@ -160,3 +160,32 @@ Side fixes during 4.3+4.4:
   controller isn't blind for the first 1/cutoff seconds.
 
 **Total after Phase 4 complete: 68/68 passing (47 headless + 21 UI).**
+
+## Phase 5 — Swing-up (n=1) + handover
+
+Two-stage swing-up:
+1. Bootstrap — square-wave cart drive at the pendulum's natural frequency
+   `ω_n = √(m·g·l / (I + m·l²))`. Excites the pendulum into a real swing
+   regardless of initial conditions (handles the degenerate at-rest-at-hanging
+   case where the bang-bang law is identically zero). Latched once the system
+   is genuinely swinging (`|θ̇| > omega_min` after `boot_min` seconds).
+2. Åström-Furuta — `u = k_E · Ẽ · σ(θ̇·cosθ)` + soft cart centering, where
+   `σ` is a tanh-smoothed sign and `Ẽ = E_p − E_p*` uses the pendulum-only
+   energy (cart KE excluded — including it lets feedback fake "energy" and
+   breaks damping).
+
+Region-of-attraction switcher (`HandoverSwitcher`): |θ_i wrapped| < `handover_theta`,
+|θ̇_i| < `handover_omega`, |x|<1.5, |ẋ|<2.5. Linear blend over
+`handover_blend_ms` once latched.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| swingup pumps energy from hanging into ROA within 30 s (n=1)      | ✅     | 112       |
+| swingup → handover blend → LQR drives θ to 0 within 40 s          | ✅     | 671       |
+| swingupDiag at upright equilibrium reports E ≈ E*                 | ✅     | 0.4       |
+| Switcher latches and unlatches based on ROA boundary              | ✅     | 0.2       |
+| Switcher mix outputs pure swingup before crossing, blends to LQR  | ✅     | 0.3       |
+| Auto mode swings up and LQR holds (browser, ≤45 s, \|θ\|<10°)     | ✅     | 5571      |
+| Swing-up-only mode keeps E ≈ E* (browser)                         | ✅     | 2252      |
+
+**Total after Phase 5 complete: 75/75 passing (52 headless + 23 UI).**

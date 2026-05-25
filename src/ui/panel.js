@@ -119,7 +119,14 @@ export function buildStubPanels() {
   addSlider('sensor-actuator', 'sensor delay [s]', 'sensor_delay',  { min: 0, max: 0.02, step: 0.0005, digits: 4 });
   addSlider('sensor-actuator', 'sensor T [s]',     'sensor_period', { min: 0.001, max: 0.02, step: 0.0005, digits: 4 });
 
-  // Controller — Q diagonal entries for x, θ_i, xdot, θ_i_dot (n=1 here; n=2/3 get
+  // Controller mode + per-mode params.
+  addSelect('controller', 'mode', 'ctrl_mode', [
+    { value: 'auto',    label: 'Auto (swing-up → LQR)' },
+    { value: 'swingup', label: 'Swing-up only' },
+    { value: 'lqr',     label: 'LQR only' },
+    { value: 'off',     label: 'Off (manual u_cmd)' },
+  ]);
+  // Q diagonal entries for x, θ_i, xdot, θ_i_dot (n=1 here; n=2/3 get
   // more sliders dynamically in Phase 7).
   addSlider('controller', 'Q[x]',     'Q_diag.0', { min: 0.1, max: 100,  step: 0.1, digits: 1 });
   addSlider('controller', 'Q[θ]',     'Q_diag.1', { min: 1,   max: 5000, step: 1,   digits: 0 });
