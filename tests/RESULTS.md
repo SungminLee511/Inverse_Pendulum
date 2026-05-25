@@ -289,3 +289,34 @@ in n (Jacobian + CARE work for arbitrary mode). What Phase 9 adds:
 | n=2 Q[θ_2] slider live-changes the \|K[2]\| gain                  | ✅     | 1257      |
 
 **Total after Phase 9 complete: 124/124 passing (82 headless + 42 UI).**
+
+## Phase 10 — Swing-up: double (n=2)
+
+PLAN §10 anticipated this would be iterative and notes the failure regime
+should be documented if pure energy pumping doesn't reach the LQR ROA.
+
+**What works**
+- Pendulum-only energy converges to within ~30% of E* within 20 s of pumping.
+- Mass-weighted smooth-sign — `Σ m_i l_i tanh(θ̇_i cosθ_i / ε) / Σ m_i l_i`
+  — correctly biases the pumping direction toward the link with more
+  m·l contribution to dE/dt.
+- Near-upright start (θ_1=0.05, θ_2=0.05) → LQR catches inside 6 s via the
+  Auto-mode switcher.
+- Nullish-coalescing fix in `swingup.js`: `params.swingup_kxP = 0` etc. now
+  override the default (was being silently coerced through `||`).
+
+**What doesn't (documented failure regime)**
+- From full hanging (θ_1=θ_2=π), pure Åström-Furuta + soft cart centering
+  does NOT bring the (θ_i, θ̇_i, x, ẋ) state into the LQR ROA inside 30 s.
+  The energy hovers near E* but the joints visit the ROA only intermittently
+  and not coincidentally. Phase 13 plans direct collocation + TVLQR; for
+  Phase 10 we ship the documented limitation.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| n=2 swing-up: energy converges to within 30% of E* in 20 s        | ✅     | 476       |
+| n=2 mass-weighted average uses per-link m·l weights               | ✅     | 0.4       |
+| n=2 Auto-mode: near-upright start → LQR catches in ≤ 6 s          | ✅     | 146       |
+| n=2 swing-up from hanging: DOCUMENTED non-convergence in 30 s     | ✅     | 688       |
+
+**Total after Phase 10 complete: 128/128 passing (86 headless + 42 UI).**

@@ -76,12 +76,14 @@ export function swingupU(n, q, qdot, params, t = 0) {
   const E_star = uprightEnergy(n, params);
   const E_tilde = E - E_star;
   const F_max = params.F_max || 30;
-  const k_E      = params.swingup_kE     || 80.0;
-  const k_xP     = params.swingup_kxP    || 0.6;
-  const k_xD     = params.swingup_kxD    || 0.8;
-  const eps_om   = params.swingup_epsOm  || 0.4;
-  const omega_min= params.swingup_omegaMin || 3.0;   // [rad/s] required to exit boot
-  const boot_min = params.swingup_bootMin  || 1.5;   // [s] min bootstrap time
+  // Use nullish coalescing so a tuned-to-zero gain like swingup_kxP=0 is
+  // honoured instead of silently picking up the default.
+  const k_E      = params.swingup_kE     ?? 80.0;
+  const k_xP     = params.swingup_kxP    ?? 0.6;
+  const k_xD     = params.swingup_kxD    ?? 0.8;
+  const eps_om   = params.swingup_epsOm  ?? 0.4;
+  const omega_min= params.swingup_omegaMin ?? 3.0;   // [rad/s] required to exit boot
+  const boot_min = params.swingup_bootMin  ?? 1.5;   // [s] min bootstrap time
 
   // dt bookkeeping (unused here but kept for future)
   _lastT = t;
@@ -120,9 +122,18 @@ export function swingupU(n, q, qdot, params, t = 0) {
   // have opposite signs (since ẍ_cart has the sign of u).
   // To REMOVE energy (Ẽ>0) we want u and θ̇·cosθ to have the same sign.
   // Both cases unified by   u_pump = +k_E · Ẽ · σ(θ̇·cosθ) .
+  //
+  // For n>1 we weight each link's contribution by m_i · l_i — that's the
+  // physically-correct prefactor in dE_p/dt = Σ m_i l_i θ̇_i cosθ_i · ẍ_cart.
   let sm = 0;
-  for (let i = 1; i <= n; i++) sm += Math.tanh((qdot[i] * Math.cos(q[i])) / eps_om);
-  sm /= n;
+  let totalW = 0;
+  for (let i = 1; i <= n; i++) {
+    const lnk = params.links[i - 1];
+    const w = lnk.m * lnk.l;
+    sm += w * Math.tanh((qdot[i] * Math.cos(q[i])) / eps_om);
+    totalW += w;
+  }
+  if (totalW > 0) sm /= totalW;
   const u_pump = +k_E * E_tilde * sm;
   const u_cart = -k_xP * q[0] - k_xD * qdot[0];
   return clamp(u_pump + u_cart, -F_max, F_max);
