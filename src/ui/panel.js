@@ -324,6 +324,13 @@ export function buildPanels() {
     { value: 'rk4',       label: 'RK4 (default)' },
   ]);
   addSlider('sim', 'dt_sim [s]', 'dt_sim', { min: 0.00005, max: 0.005, step: 0.00005, digits: 5 });
+  // Phase 13 fallback for n=3: start near upright so LQR catches immediately.
+  // Effective only on next Reset / mode-change.
+  addSelect('sim', 'start pose', 'start_pose', [
+    { value: 'hanging',      label: 'Hanging (θ=π)' },
+    { value: 'near-upright', label: 'Near-upright (θ=0.05, LQR-only)' },
+    { value: 'upright',      label: 'Upright (θ=0, debug)' },
+  ]);
 
   wirePresets();
   wireKick();

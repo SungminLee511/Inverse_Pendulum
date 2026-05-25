@@ -45,6 +45,7 @@ const DEFAULT_PARAMS = {
   dt_sim: 1e-4,            // 0.1 ms (10 kHz)
   max_frame_ms: 50,
   seed: 12345,
+  start_pose: 'hanging',   // 'hanging' | 'near-upright' | 'upright'
 };
 
 // Fill inertia I = m L^2 / 12 for nulls
@@ -96,9 +97,15 @@ export const state = {
   fps: 0,
 };
 
-// Build the q vector for a given mode (cart at 0, links hanging down: theta=pi)
-export function freshQ(n, hanging = true) {
-  const theta = hanging ? Math.PI : 0;
+// Build the q vector for a given mode. `start` can be:
+//   'hanging'      — θ_i = π (default, demanded by PLAN)
+//   'near-upright' — θ_i = 0.05 (Phase 13 fallback for n=3 — LQR catches it
+//                    immediately so we sidestep the trajopt requirement).
+//   'upright'      — θ_i = 0 (debug / smoke-test only).
+export function freshQ(n, start = 'hanging') {
+  let theta = Math.PI;
+  if (start === 'near-upright') theta = 0.05;
+  else if (start === 'upright') theta = 0;
   const q = new Float64Array(n + 1);
   const qd = new Float64Array(n + 1);
   for (let i = 1; i <= n; i++) q[i] = theta;
@@ -109,7 +116,8 @@ export function freshQ(n, hanging = true) {
 export function setMode(n) {
   if (n !== 1 && n !== 2 && n !== 3) throw new Error(`Bad mode n=${n}`);
   state.n = n;
-  const fresh = freshQ(n, true);
+  const start = state.params.start_pose || 'hanging';
+  const fresh = freshQ(n, start);
   state.q = fresh.q;
   state.qdot = fresh.qdot;
   state.t = 0;

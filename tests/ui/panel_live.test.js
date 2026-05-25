@@ -39,7 +39,10 @@ test('Bumping integrator dropdown to Euler still keeps sim alive', async () => {
     s.params.ctrl_mode = 'off';
     s.u_cmd = 0; s.u_applied = 0; s.u_effective = 0;
   });
-  const sel = page.locator('.panel-group[data-group="sim"] select');
+  // Sim group now has TWO selects (integrator + start_pose) since Phase 13.
+  // Pick the one whose row label says "integrator".
+  const sel = page.locator('.panel-group[data-group="sim"] .slider-row')
+    .filter({ hasText: 'integrator' }).locator('select');
   await sel.selectOption('euler');
   await page.evaluate(() => { window.__pendulum.state.q[1] = Math.PI - 0.6; });
   await page.waitForTimeout(500);

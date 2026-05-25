@@ -385,3 +385,41 @@ place (Phase 11). Phase 12 deliverables:
 | n=3 LQR wiring (browser): K length 8 + non-zero u_cmd             | ✅     | 1752      |
 
 **Total after Phase 12 complete: 157/157 passing (111 headless + 46 UI).**
+
+## Phase 13 — Swing-up triple (n=3) + near-upright fallback
+
+PLAN §13 anticipates that pure energy-based swing-up will fail for the triple
+and offers three plans:
+  - Plan A: energy-based (likely fails) — confirmed.
+  - Plan B: offline trajectory optimization + TVLQR tracker.
+  - Plan C: ship near-upright start toggle + documented limitation.
+
+This phase delivers Plan C + the Plan B skeleton:
+
+- **Near-upright start fallback (Plan C — ships now)**: `state.params.start_pose`
+  ∈ {`hanging`, `near-upright`, `upright`}, exposed as a Sim-panel dropdown.
+  `setMode(n)` reads it and lays out q[i] accordingly. Combined with the
+  switcher's new "skip-blend when starting inside ROA" behaviour, Auto mode
+  catches the perturbation immediately for n=3.
+- **Switcher improvement**: if the very first call to `mix(...)` already
+  finds the state inside the ROA, skip the 80 ms blend window (no swing-up
+  history to soften) and go straight to LQR.
+- **`tools/trajopt_triple.py` skeleton (Plan B)**: sympy-built n=3 plant
+  (M, h, G via numpy `lambdify`), CLI driver writes `(t, x*, u*, K(t))`
+  stub JSON to `src/control/trajopt_triple.json`. The Hermite-Simpson
+  direct-collocation NLP is a TODO comment — the skeleton documents the
+  scaffold, the consumer pipeline can be wired against the stub JSON, and a
+  follow-up commit can drop in the optimisation when CasADi or scipy time
+  is available.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| n=3 swing-up: energy converges to within 40% of E_p* in 25 s      | ✅     | 863       |
+| n=3 from hanging: DOCUMENTED non-convergence to LQR ROA in 30 s   | ✅     | 1046      |
+| n=3 near-upright fallback: θ_i=0.05 + Auto → LQR catches in ≤ 6 s | ✅     | 156       |
+| Switcher.inROA for n=3 uses all 4 angles + velocities             | ✅     | 0.3       |
+| start_pose=near-upright → reset places n=3 joints at θ=0.05       | ✅     | 1190      |
+| n=3 near-upright + Auto mode: LQR engages (browser)               | ✅     | 1456      |
+| Energy-based n=3 from hanging: documented non-stab (browser)      | ✅     | 3097      |
+
+**Total after Phase 13 complete: 164/164 passing (115 headless + 49 UI).**

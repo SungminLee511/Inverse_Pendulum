@@ -23,6 +23,7 @@ export class HandoverSwitcher {
   constructor() {
     this.in_roa = false;
     this.blend_start_t = -Infinity;
+    this._everSwung = false;     // has u_swing() ever been called?
   }
 
   inROA(q, qdot, params) {
@@ -42,23 +43,33 @@ export class HandoverSwitcher {
    *  - u_swing : () => number  (swing-up command)
    *  - u_lqr   : () => number  (LQR command from same state)
    *  - t       : sim time (seconds)
+   *
+   *  Behaviour:
+   *    - If we ENTER the ROA (false → true), start a linear blend.
+   *    - If we LEAVE the ROA, drop back to pure swing-up immediately.
+   *    - If the FIRST call already finds us in the ROA (e.g. user starts the
+   *      sim near upright with the "near-upright start" fallback), skip the
+   *      blend and go straight to LQR. The blend exists to soften swing-up→
+   *      LQR transients; if we never ran swing-up there's nothing to soften.
    */
   mix(t, q, qdot, params, u_swing, u_lqr) {
     const inside = this.inROA(q, qdot, params);
     if (inside && !this.in_roa) {
-      // entered ROA: latch and start blend
       this.in_roa = true;
-      this.blend_start_t = t;
+      // First-ever ROA entry with no swing-up history → skip blend.
+      this.blend_start_t = this._everSwung ? t : -Infinity;
     } else if (!inside && this.in_roa) {
-      // left ROA: drop back to swing-up immediately. (Could de-bounce.)
       this.in_roa = false;
       this.blend_start_t = -Infinity;
     }
-    if (!this.in_roa) return u_swing();
-
+    if (!this.in_roa) {
+      this._everSwung = true;
+      return u_swing();
+    }
     const blend_ms = params.handover_blend_ms || 80;
     const elapsed_ms = Math.max(0, (t - this.blend_start_t) * 1000);
     const alpha = Math.min(1, elapsed_ms / blend_ms);
+    if (!Number.isFinite(this.blend_start_t)) return u_lqr();    // skipped blend
     const us = u_swing();
     const ul = u_lqr();
     return alpha * ul + (1 - alpha) * us;
@@ -67,5 +78,6 @@ export class HandoverSwitcher {
   reset() {
     this.in_roa = false;
     this.blend_start_t = -Infinity;
+    this._everSwung = false;
   }
 }
