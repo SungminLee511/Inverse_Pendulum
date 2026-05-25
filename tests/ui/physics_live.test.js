@@ -12,11 +12,16 @@ test('n=1 physics runs live and energy stays bounded', async () => {
   const page = await (await browser.newContext()).newPage();
   await page.goto(srv.url + '/index.html', { waitUntil: 'networkidle' });
 
-  // Disable friction so we can check conservation
+  // Disable friction so we can check conservation; controller off so no
+  // external work is done on the cart.
   await page.evaluate(() => {
     const s = window.__pendulum.state;
+    s.params.ctrl_mode = 'off';
+    s.u_cmd = 0; s.u_applied = 0; s.u_effective = 0;
     s.params.cart_visc = 0;
+    s.params.cart_coulomb = 0;
     s.params.links[0].joint_viscous = 0;
+    s.params.links[0].joint_coulomb = 0;
     // perturb to give the pendulum some swing
     s.q[1] = Math.PI - 0.5;
     s.qdot[1] = 0;

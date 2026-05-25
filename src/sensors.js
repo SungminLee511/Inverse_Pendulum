@@ -94,16 +94,24 @@ export class Sensor {
 
   // Filtered finite-difference velocity estimator. Call AFTER read() at every sample tick.
   // dt = sensor period. cutoff = filter cutoff frequency [rad/s]. simple one-pole IIR.
-  updateVelocity(currentSample, dt, cutoff = 30) {
+  // On first valid FD sample (after bootstrap), snap lastVel to raw to avoid a
+  // multi-time-constant warm-up that would leave the controller blind to velocity
+  // for the first ~1/cutoff seconds.
+  updateVelocity(currentSample, dt, cutoff = 200) {
     if (this.lastSampleTime == null) {
       this.lastSampleTime = currentSample; // bootstrap, no velocity yet
       this.lastVel = 0;
+      this._warmStart = true;
       return 0;
     }
     const raw = (currentSample - this.lastSampleTime) / dt;
-    // 1-pole IIR low-pass: alpha = dt * cutoff / (1 + dt * cutoff)
-    const alpha = (dt * cutoff) / (1 + dt * cutoff);
-    this.lastVel = (1 - alpha) * this.lastVel + alpha * raw;
+    if (this._warmStart) {
+      this.lastVel = raw;
+      this._warmStart = false;
+    } else {
+      const alpha = (dt * cutoff) / (1 + dt * cutoff);
+      this.lastVel = (1 - alpha) * this.lastVel + alpha * raw;
+    }
     this.lastSampleTime = currentSample;
     return this.lastVel;
   }
@@ -119,7 +127,8 @@ export class Sensor {
 // ---------- Bank wired to global state ----------
 let _sensors = null;        // [cart, joint_1, ..., joint_n]
 let _rng = null;
-let _cutoff = 30;           // velocity LPF cutoff [rad/s]
+let _cutoff = 200;          // velocity LPF cutoff [rad/s] — high enough to track
+                            // the fastest closed-loop pole on triple pendulum
 
 function rebuild(n, seed) {
   _rng = mulberry32(seed >>> 0);

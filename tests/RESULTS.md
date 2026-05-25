@@ -141,3 +141,22 @@ Screenshots `IP_phase2_n{1,2,3}_t20260524.png` pushed to output_port.
 | matrixInvert round-trip A·A⁻¹ = I                     | ✅     | 0.2       |
 
 **Total after Phase 4.2: 64/64 passing (45 headless + 19 UI).**
+
+## Phase 4.3 + 4.4 — controller wired into rAF loop + Q/R sliders
+
+| Test                                                            | Status | Time (ms) |
+|-----------------------------------------------------------------|--------|-----------|
+| LQR on full nonlinear EOM brings θ=0.15→~0 within 6s (R=0.05)   | ✅     | 92        |
+| LQR on full nonlinear EOM with browser-default R=0.01 stabilises| ✅     | 68        |
+| LQR mode stabilises 0.15 rad tilt back to upright in 6 s (browser) | ✅  | 5175      |
+| Increasing Q[θ] slider produces larger \|K[θ]\| gain            | ✅     | 1182      |
+
+Side fixes during 4.3+4.4:
+- `panel_live`/`physics_live` tests updated to `ctrl_mode='off'` (otherwise the
+  default-`auto` LQR would whack the hanging pendulum during test setup).
+- Exposed `_resetActuator` on `window.__pendulum` so tests can drain residual
+  motor lag/slew state before sampling.
+- Sensor velocity LPF cutoff bumped 30→200 rad/s with a warm-start snap so the
+  controller isn't blind for the first 1/cutoff seconds.
+
+**Total after Phase 4 complete: 68/68 passing (47 headless + 21 UI).**

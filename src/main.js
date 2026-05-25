@@ -15,7 +15,8 @@ import { getEOM } from './physics/index.js';
 import { step as stepInt } from './physics/integrator.js';
 import { initCanvas, render as renderCanvas } from './ui/canvas.js';
 import { initSensors, sensorTick } from './sensors.js';
-import { initActuator, actuatorTick } from './actuator.js';
+import { initActuator, actuatorTick, _resetActuator } from './actuator.js';
+import { initController, controllerTick, markDirty as markKDirty, getK } from './control/controller.js';
 
 // --- DOM refs ---
 const canvas = document.getElementById('pendulum-canvas');
@@ -86,9 +87,11 @@ setStep('physics', dt_sim => {
 
 setStep('sensor', sensorTick);
 
-// Control step: real controllers come in Phase 4+. For now we just run the actuator
-// chain on whatever state.u_cmd has been set to (default 0, so cart sits still).
-setStep('control', () => actuatorTick(state.params.control_period));
+// Control step (Phase 4+): controller writes u_cmd → actuator → u_effective.
+setStep('control', () => {
+  controllerTick();
+  actuatorTick(state.params.control_period);
+});
 
 setStep('render', renderCanvas);
 
@@ -107,8 +110,10 @@ hudT.textContent = 't = 0.00 s';
 buildStubPanels();
 initSensors();
 initActuator();
+initController();
 
 start();
 
 // Debug handle
-window.__pendulum = { state };
+import { setParam } from './state.js';
+window.__pendulum = { state, setParam, markKDirty, getK, _resetActuator };
