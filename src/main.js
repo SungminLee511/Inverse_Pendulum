@@ -83,8 +83,9 @@ initCanvas(canvas);
 setStep('physics', dt_sim => {
   const eom = getEOM(state.n);
   const integrator = state.params.integrator || 'rk4';
-  // Use u_effective (post-actuator). Falls back to u_applied if actuator not initialised.
-  const u = (state.u_effective !== undefined) ? state.u_effective : state.u_applied;
+  // Use u_effective (post-actuator) plus any drag disturbance (Phase 15.1).
+  const u_base = (state.u_effective !== undefined) ? state.u_effective : state.u_applied;
+  const u = u_base + (state.drag_force || 0);
   const [qn, qdn] = stepInt(integrator, state.q, state.qdot, u, dt_sim, state.params, eom);
   for (let i = 0; i < state.q.length; i++) {
     state.q[i] = qn[i]; state.qdot[i] = qdn[i];

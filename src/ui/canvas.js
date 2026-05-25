@@ -178,11 +178,84 @@ function drawHud(ctx, W, H) {
 let _ctx = null;
 let _canvas = null;
 
+// Mouse-drag disturbance state. Applied force lives in state.drag_force
+// (cart-frame [F_x, F_y] in newtons). Phase 15.1.
+let _drag = null;    // { downX, downY, joint } while held
+
+function _worldFromMouse(ev) {
+  const rect = _canvas.getBoundingClientRect();
+  const sx = ev.clientX - rect.left;
+  const sy = ev.clientY - rect.top;
+  const groundY = rect.height * 0.7;
+  return {
+    sx, sy, rect,
+    xWorld: (sx - rect.width / 2) / PX_PER_M,
+    yWorld: (groundY - sy) / PX_PER_M,
+  };
+}
+
+// Cart top sits cartH=28 px above the ground line in canvas coords →
+// PIVOT_Y_WORLD = 28 / PX_PER_M = 0.14 m above the world y=0 datum.
+const PIVOT_Y_WORLD = 28 / PX_PER_M;
+
+function _nearestJoint(xw, yw) {
+  // Walk pivot → joint_1 → ... and find closest joint to (xw, yw).
+  let jx = state.q[0];
+  let jy = PIVOT_Y_WORLD;
+  let best = -1, bestD2 = 0.15 * 0.15;   // require within 15 cm
+  for (let i = 0; i < state.n; i++) {
+    const L = state.params.links[i].L;
+    const theta = state.q[i + 1];
+    jx += L * Math.sin(theta);
+    jy += L * Math.cos(theta);
+    const dx = xw - jx;
+    const dy = yw - jy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) { bestD2 = d2; best = i + 1; }   // joint index (1-based on q)
+  }
+  return best;   // -1 if no joint within range
+}
+
 export function initCanvas(canvasEl) {
   _canvas = canvasEl;
   _ctx = canvasEl.getContext('2d');
   resize();
   window.addEventListener('resize', resize);
+
+  // Drag handlers: project the cursor's x-direction force onto the cart as
+  // an extra disturbance force (writes to state.drag_force).
+  canvasEl.addEventListener('mousedown', (ev) => {
+    const m = _worldFromMouse(ev);
+    const j = _nearestJoint(m.xWorld, m.yWorld);
+    if (j > 0) {
+      _drag = { joint: j };
+      // initial nudge: force proportional to delta from joint to cursor
+      _applyDrag(ev, j);
+    }
+  });
+  canvasEl.addEventListener('mousemove', (ev) => {
+    if (_drag) _applyDrag(ev, _drag.joint);
+  });
+  const _drop = () => { _drag = null; state.drag_force = 0; };
+  canvasEl.addEventListener('mouseup', _drop);
+  canvasEl.addEventListener('mouseleave', _drop);
+}
+
+function _applyDrag(ev, joint) {
+  const m = _worldFromMouse(ev);
+  // Compute current joint world position (matching renderer pivot offset).
+  let jx = state.q[0], jy = PIVOT_Y_WORLD;
+  for (let i = 0; i < joint; i++) {
+    const L = state.params.links[i].L;
+    const th = state.q[i + 1];
+    jx += L * Math.sin(th);
+    jy += L * Math.cos(th);
+  }
+  // Horizontal force proportional to horizontal offset, scaled by drag_gain.
+  const gain = state.params.drag_gain || 60;
+  const dx = m.xWorld - jx;
+  state.drag_force = Math.max(-50, Math.min(50, gain * dx));
+  state.drag_joint = joint;
 }
 
 function resize() {

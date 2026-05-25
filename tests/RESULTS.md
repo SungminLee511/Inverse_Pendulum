@@ -456,3 +456,24 @@ built lazily on next tick.
 | Switching sysid → off clears the excitation                       | ✅     | 1890      |
 
 **Total after Phase 14 complete: 179/179 passing (126 headless + 53 UI).**
+
+## Phase 15 — Polish
+
+- Mouse-drag disturbance: click + drag any joint → horizontal force injected
+  directly into the physics step via `state.drag_force` (cart-frame force,
+  proportional to horizontal cursor offset, saturated at ±50 N). Release →
+  drag_force = 0. Joint-pickup radius = 15 cm; PIVOT_Y_WORLD (28/PX_PER_M)
+  fix aligns _nearestJoint with the actual renderer geometry.
+- README.md: quickstart, repo layout, conventions, controls, phase status
+  table, math sketch (LQR / swing-up / switcher / sysid), sign-convention
+  bug catalogue.
+- Full-flow Playwright regression: hanging → swing-up → LQR catch → kick →
+  recover (sim accelerated 10× wall) — verifies pipeline end-to-end.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| Full flow: hanging → swing-up → LQR → kick → recover (n=1)        | ✅     | 5371      |
+| Mouse drag on link applies horizontal disturbance force           | ✅     | 1206      |
+| Full flow: no NaN in state after 5 s sim under default Auto       | ✅     | 2063      |
+
+**Total after Phase 15 complete: 182/182 passing (126 headless + 56 UI).**
