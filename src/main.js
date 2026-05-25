@@ -10,7 +10,7 @@ import {
   on,
 } from './state.js';
 import { setStep, onFrame, start } from './loop.js';
-import { buildStubPanels } from './ui/panel.js';
+import { buildPanels, doKick } from './ui/panel.js';
 import { getEOM } from './physics/index.js';
 import { step as stepInt } from './physics/integrator.js';
 import { initCanvas, render as renderCanvas } from './ui/canvas.js';
@@ -48,12 +48,17 @@ on('running-change', running => { btnPlayPause.textContent = running ? '⏸' : '
 on('speed-change', s => { speedVal.textContent = s.toFixed(1) + '×'; });
 on('reset', () => { hudT.textContent = 't = 0.00 s'; });
 
-// Keyboard shortcuts
+// Keyboard shortcuts. K kicks pendulum link 1 with the magnitude slider value.
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   switch (e.key) {
     case ' ': e.preventDefault(); setRunning(!state.running); break;
     case 'r': case 'R': reset(); break;
+    case 'k': case 'K': {
+      const mag = Number(document.getElementById('kick-mag')?.value || 5);
+      doKick(mag);
+      break;
+    }
     case '1': setMode(1); break;
     case '2': setMode(2); break;
     case '3': setMode(3); break;
@@ -115,7 +120,7 @@ btnPlayPause.textContent = state.running ? '⏸' : '▶';
 speedVal.textContent = state.speed.toFixed(1) + '×';
 hudT.textContent = 't = 0.00 s';
 
-buildStubPanels();
+buildPanels();
 initSensors();
 initActuator();
 initController();
@@ -125,4 +130,4 @@ start();
 
 // Debug handle
 import { setParam } from './state.js';
-window.__pendulum = { state, setParam, markKDirty, getK, _resetActuator };
+window.__pendulum = { state, setParam, markKDirty, getK, _resetActuator, doKick };

@@ -212,3 +212,28 @@ throttle so changing sensor_period doesn't blow the ring), render throttled to
 | Plot buffers clear on mode change                                 | ✅     | 2036      |
 
 **Total after Phase 6 complete: 87/87 passing (60 headless + 27 UI).**
+
+## Phase 7 — Full parameter UI + presets + keyboard
+
+- Per-link slider sub-blocks (m, L, l_c, I, joint visc, joint Coulomb) rebuilt
+  on mode-change. n=1 → 6 link sliders, n=2 → 12, n=3 → 18.
+- Q-diag controller block resized to 2·(n+1) entries per mode.
+- Built-in presets (`default-1/2/3`, `noisy`, `fast-motor`, `stiff-triple`)
+  with localStorage Save/Load round-trip.
+- Kick button + magnitude slider + `K` keyboard shortcut → impulse on
+  `qdot[1]`.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| Per-link sliders appear for n=1 (6 entries × 1 link)              | ✅     | 1193      |
+| Switching to n=2 rebuilds per-link block (12 entries)             | ✅     | 1304      |
+| Switching to n=3 rebuilds per-link block (18) + 8 Q-diag sliders  | ✅     | 1309      |
+| Per-link slider edit propagates to state.params.links[i].field    | ✅     | 1358      |
+| Preset Load applies "stiff-triple" (n=3, F_max=80, sensor_delay=1ms) | ✅  | 1364      |
+| Preset Save → Load round-trip preserves a modified F_max          | ✅     | 1416      |
+| Keyboard K applies a kick (qdot[1] += magnitude)                  | ✅     | 1266      |
+| Keyboard Space toggles running                                    | ✅     | 1304      |
+| Keyboard R resets sim time                                        | ✅     | 1627      |
+| Total slider count ≥ 22 (mode 1)                                  | ✅     | 1224      |
+
+**Total after Phase 7 complete: 97/97 passing (60 headless + 37 UI).**
