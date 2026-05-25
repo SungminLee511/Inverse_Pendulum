@@ -352,3 +352,36 @@ should be documented if pure energy pumping doesn't reach the LQR ROA.
 | Canvas: three links visible after mode switch                     | ✅     | 1423      |
 
 **Total after Phase 11 complete: 150/150 passing (105 headless + 45 UI).**
+
+## Phase 12 — LQR triple + robustness sweep
+
+Controller dispatcher already generic in n (Phase 4); the n=3 EOM is now in
+place (Phase 11). Phase 12 deliverables:
+
+- **Closed-loop n=3 LQR on full nonlinear EOM** (no sensor / actuator path):
+  small per-joint perturbation drives back to upright in ≤ 6 s.
+- **27-cell robustness sweep**: mass × length × friction multipliers
+  {0.8, 1.0, 1.2} × {0.8, 1.0, 1.2} × {0.5, 1.0, 1.5}. K is re-solved against
+  the perturbed plant each cell. Pass criterion: |θ_i| < 0.05 rad after 8 s
+  from a 0.03 rad/joint perturbation. **27/27 cells pass** — the linearisation
+  + CARE pipeline is solidly within margin for this nominal triple. Matrix
+  written to `tests/RESULTS_robustness_n3.md`.
+- **UI wiring**: LQR mode produces a finite 8-vector K and a non-zero u_cmd
+  under perturbation in the browser. A full in-browser closed-loop n=3
+  convergence test is **not** included — the velocity-FD IIR + ZOH at the
+  control_period introduce enough phase lag to destabilise the tightly-tuned
+  triple LQR even with σ=0 / delay=0 sensors. The headless closed-loop +
+  robustness sweep already validate the algorithm itself. (PLAN §9 calls
+  this out explicitly as a "triple sensitivity" pitfall.)
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| n=3 LQR: linearize → CARE → K finite, length 8                    | ✅     | 14        |
+| n=3 LQR stabilises (0.03, 0.03, 0.03) perturbation in 6 s         | ✅     | 156       |
+| n=3 LQR: heavier R reduces \|\|K\|\|                              | ✅     | 9         |
+| n=3 LQR: higher Q[θ_3] → larger \|K[3]\|                          | ✅     | 2.5       |
+| robustness sweep: nominal point succeeds                          | ✅     | 211       |
+| robustness 27-cell matrix (mass × length × friction): 27/27 pass  | ✅     | 4752      |
+| n=3 LQR wiring (browser): K length 8 + non-zero u_cmd             | ✅     | 1752      |
+
+**Total after Phase 12 complete: 157/157 passing (111 headless + 46 UI).**

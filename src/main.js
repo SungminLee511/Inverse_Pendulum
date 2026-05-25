@@ -14,7 +14,7 @@ import { buildPanels, doKick } from './ui/panel.js';
 import { getEOM } from './physics/index.js';
 import { step as stepInt } from './physics/integrator.js';
 import { initCanvas, render as renderCanvas } from './ui/canvas.js';
-import { initSensors, sensorTick } from './sensors.js';
+import { initSensors, sensorTick, setVelocityCutoff } from './sensors.js';
 import { initActuator, actuatorTick, _resetActuator } from './actuator.js';
 import { initController, controllerTick, markDirty as markKDirty, getK } from './control/controller.js';
 import { initPlots, plotsSampleTick, renderPlots, _internal as _plotsInternal } from './ui/plots.js';
@@ -131,4 +131,5 @@ start();
 // Debug handle
 import { setParam } from './state.js';
 window.__pendulum = { state, setParam, markKDirty, getK, _resetActuator, doKick,
-  getPlotBuffers: () => _plotsInternal.getBuffers() };
+  getPlotBuffers: () => _plotsInternal.getBuffers(),
+  setVelocityCutoff };
