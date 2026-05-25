@@ -267,3 +267,25 @@ throttle so changing sensor_period doesn't blow the ring), render throttled to
 | Canvas: two links visible after mode switch (orange + blue px)    | ✅     | 1714      |
 
 **Total after Phase 8 complete: 117/117 passing (77 headless + 40 UI).**
+
+## Phase 9 — LQR: double (n=2)
+
+The controller dispatcher in `src/control/controller.js` is already generic
+in n (Jacobian + CARE work for arbitrary mode). What Phase 9 adds:
+
+- Closed-loop stability tests on the FULL nonlinear n=2 EOM (not just the
+  linearisation).
+- Q/R coupling tests (heavier R → smaller ||K||, larger Q[θ] → larger |K|).
+- Browser end-to-end LQR mode test for n=2.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| n=2 LQR stabilises θ_1=0.05, θ_2=0.05 within 6 s                  | ✅     | 118       |
+| n=2 LQR keeps peak \|θ\| < 0.5 rad during a 0.1 rad pulse         | ✅     | 68        |
+| n=2 LQR closed-loop has no NaN over 5 s under modest perturbation | ✅     | 72        |
+| n=2 LQR: heavier R reduces \|\|K\|\|                              | ✅     | 1.7       |
+| n=2 LQR: higher Q[θ_1] → larger \|K[1]\|                          | ✅     | 1.5       |
+| n=2 LQR stabilises in browser (ideal sensors) ≤ 8 s               | ✅     | 5379      |
+| n=2 Q[θ_2] slider live-changes the \|K[2]\| gain                  | ✅     | 1257      |
+
+**Total after Phase 9 complete: 124/124 passing (82 headless + 42 UI).**
