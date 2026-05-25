@@ -320,3 +320,35 @@ should be documented if pure energy pumping doesn't reach the LQR ROA.
 | n=2 swing-up from hanging: DOCUMENTED non-convergence in 30 s     | ✅     | 688       |
 
 **Total after Phase 10 complete: 128/128 passing (86 headless + 42 UI).**
+
+## Phase 11 — Physics: triple (n=3)
+
+`tools/derive_eom.py 3` → `src/physics/nlink_3.js`. Registered in
+`physics/index.js`. Canvas already draws n links generically.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| n=3 EOM exports correct N (=3) and DOF (=4)                       | ✅     | 1.3       |
+| M(q) is symmetric across 20 random configurations                 | ✅     | 1.7       |
+| M(q) is positive-definite via Sylvester (4×4 det)                 | ✅     | 0.7       |
+| G is exactly zero at upright                                      | ✅     | 0.3       |
+| G is exactly zero at hanging (π,π,π)                              | ✅     | 0.2       |
+| qddot at upright + zero qdot + zero u + no friction → zero        | ✅     | 0.5       |
+| Friction Dqdot is diagonal in n=3                                 | ✅     | 0.2       |
+| M condition: diagonal entries vs off-diagonals (sanity)           | ✅     | 0.2       |
+| n=3 RK4 conserves energy to < 1% over 5 s (frictionless)          | ✅     | 152       |
+| n=3 RK4 with friction dissipates monotonically                    | ✅     | 122       |
+| n=3 qddot at upright + friction → zero                            | ✅     | 0.3       |
+| n=3 qddot at hanging with cart force → cart + joints respond      | ✅     | 0.5       |
+| linearize(3): A is 8×8, B is 8-vec, cart-only actuation           | ✅     | 2.9       |
+| linearize(3): top-right block = identity exactly                  | ✅     | 1.7       |
+| linearize(3): Richardson eps=1e-4 vs 1e-6 agree to 1e-3           | ✅     | 0.7       |
+| linearize(3): friction → negative diag in lower-right             | ✅     | 0.5       |
+| linearize(3): upright is unstable                                 | ✅     | 0.4       |
+| controllability rank(n=3) = 8 (full)                              | ✅     | 1.2       |
+| linearize(3): A and B all finite                                  | ✅     | 0.4       |
+| Switching to n=3 runs real physics; q/qdot finite                 | ✅     | 2716      |
+| LQR for n=3 produces a valid 8-vector gain                        | ✅     | 1369      |
+| Canvas: three links visible after mode switch                     | ✅     | 1423      |
+
+**Total after Phase 11 complete: 150/150 passing (105 headless + 45 UI).**

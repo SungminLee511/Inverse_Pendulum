@@ -4,6 +4,7 @@
 
 import * as eom1 from './nlink_1.js';
 import * as eom2 from './nlink_2.js';
+import * as eom3 from './nlink_3.js';
 
 const placeholder = {
   N: null, DOF: null,
@@ -27,7 +28,7 @@ const placeholder = {
 const MODULES = {
   1: eom1,
   2: eom2,
-  3: placeholder,    // Phase 11 replaces this
+  3: eom3,
 };
 
 export function getEOM(n) {
