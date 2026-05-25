@@ -189,3 +189,26 @@ Region-of-attraction switcher (`HandoverSwitcher`): |θ_i wrapped| < `handover_t
 | Swing-up-only mode keeps E ≈ E* (browser)                         | ✅     | 2252      |
 
 **Total after Phase 5 complete: 75/75 passing (52 headless + 23 UI).**
+
+## Phase 6 — Plots (angles / velocities / phase portrait / control force)
+
+Rolling-buffer canvas plots; sample at the sensor cadence (with internal
+throttle so changing sensor_period doesn't blow the ring), render throttled to
+~30 Hz wall time.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| TimeSeries: empty initial state                                   | ✅     | 1.4       |
+| TimeSeries: push appends rows and grows n up to cap               | ✅     | 0.9       |
+| TimeSeries: ring wraps when cap exceeded                          | ✅     | 0.2       |
+| TimeSeries: forEach is chronological after wrap                   | ✅     | 0.3       |
+| TimeSeries: clear empties without resizing                        | ✅     | 0.2       |
+| TimeSeries: trange reports oldest/newest after wrap               | ✅     | 0.2       |
+| TimeSeries: multi-channel push lazily allocates channels          | ✅     | 0.3       |
+| wrap(): maps any real angle into (−π, π]                          | ✅     | 0.2       |
+| All four plot canvases have content after ~2 s sim                | ✅     | 3215      |
+| Force plot shows ±F_max amber reference lines                     | ✅     | 2680      |
+| Phase plot trail accumulates over time (more bright px later)     | ✅     | 4086      |
+| Plot buffers clear on mode change                                 | ✅     | 2036      |
+
+**Total after Phase 6 complete: 87/87 passing (60 headless + 27 UI).**

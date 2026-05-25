@@ -17,6 +17,7 @@ import { initCanvas, render as renderCanvas } from './ui/canvas.js';
 import { initSensors, sensorTick } from './sensors.js';
 import { initActuator, actuatorTick, _resetActuator } from './actuator.js';
 import { initController, controllerTick, markDirty as markKDirty, getK } from './control/controller.js';
+import { initPlots, plotsSampleTick, renderPlots } from './ui/plots.js';
 
 // --- DOM refs ---
 const canvas = document.getElementById('pendulum-canvas');
@@ -85,7 +86,12 @@ setStep('physics', dt_sim => {
   }
 });
 
-setStep('sensor', sensorTick);
+// Sensor step + plot sampling at sensor cadence — plots throttle internally so
+// changing sensor_period doesn't blow up the ring buffer.
+setStep('sensor', () => {
+  sensorTick();
+  plotsSampleTick();
+});
 
 // Control step (Phase 4+): controller writes u_cmd → actuator → u_effective.
 setStep('control', () => {
@@ -95,10 +101,12 @@ setStep('control', () => {
 
 setStep('render', renderCanvas);
 
-// HUD updates each frame
+// HUD updates each frame; plots redraw on the same wall-time tick (throttled
+// to ~30 Hz inside renderPlots).
 onFrame((now, dt) => {
   hudT.textContent = `t = ${state.t.toFixed(2)} s`;
   hudFps.textContent = state.fps.toFixed(0) + ' fps';
+  renderPlots(now);
 });
 
 // Initial DOM sync
@@ -111,6 +119,7 @@ buildStubPanels();
 initSensors();
 initActuator();
 initController();
+initPlots();
 
 start();
 
