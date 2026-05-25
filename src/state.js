@@ -46,6 +46,10 @@ const DEFAULT_PARAMS = {
   max_frame_ms: 50,
   seed: 12345,
   start_pose: 'hanging',   // 'hanging' | 'near-upright' | 'upright'
+
+  // Sys-ID
+  sysid_excitation: 'chirp',     // 'impulse' | 'step' | 'chirp' | 'prbs'
+  sysid_amplitude: 5,            // [N]
 };
 
 // Fill inertia I = m L^2 / 12 for nulls

@@ -309,8 +309,16 @@ export function buildPanels() {
     { value: 'auto',    label: 'Auto (swing-up → LQR)' },
     { value: 'swingup', label: 'Swing-up only' },
     { value: 'lqr',     label: 'LQR only' },
+    { value: 'sysid',   label: 'Sys-ID excitation' },
     { value: 'off',     label: 'Off (manual u_cmd)' },
   ]);
+  addSelect('controller', 'sysid excite', 'sysid_excitation', [
+    { value: 'chirp',   label: 'Chirp (0.2–4 Hz)' },
+    { value: 'prbs',    label: 'PRBS (m-seq)' },
+    { value: 'step',    label: 'Step' },
+    { value: 'impulse', label: 'Impulse' },
+  ]);
+  addSlider('controller', 'sysid amp [N]', 'sysid_amplitude', { min: 0.5, max: 20, step: 0.5, digits: 1 });
   buildQDiagSliders();
   addSlider('controller', 'R (LQR)',          'R',                { min: 0.001, max: 1, step: 0.001, digits: 3 });
   addSlider('controller', 'control T [s]',    'control_period',   { min: 0.001, max: 0.02, step: 0.0005, digits: 4 });

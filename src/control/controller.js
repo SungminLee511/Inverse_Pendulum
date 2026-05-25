@@ -12,11 +12,14 @@ import { linearize, solveCARE } from './lqr.js';
 import { isReal } from '../physics/index.js';
 import { swingupU, resetSwingup } from './swingup.js';
 import { HandoverSwitcher } from './switcher.js';
+import { impulseExcitation, stepExcitation, chirpExcitation, prbsExcitation } from './sysid.js';
 
 let _K = null;           // current gain vector (length n_state)
 let _Kn = -1;            // mode the gain was computed for
 let _dirty = true;       // recompute on next tick
 let _switcher = new HandoverSwitcher();   // swingup ↔ LQR handover
+let _sysidU = null;                       // active excitation u(t) when ctrl_mode='sysid'
+let _sysidT0 = 0;                          // sim time at sysid engage
 
 function recompute() {
   if (!isReal(state.n)) { _K = null; _Kn = state.n; _dirty = false; return; }
@@ -51,10 +54,15 @@ export function initController() {
     _dirty = true;
     _switcher.reset();
     resetSwingup();
+    resetSysid();
   });
   on('reset', () => {
     _switcher.reset();
     resetSwingup();
+    resetSysid();
+  });
+  on('param-change', ({ path }) => {
+    if (path === 'sysid_excitation' || path === 'sysid_amplitude') resetSysid();
   });
   on('param-change', ({ path }) => {
     // Only physical / actuator / control gain params affect K.
@@ -113,11 +121,29 @@ export function controllerTick() {
   if (m === 'off') return;
   if (m === 'lqr') { state.u_cmd = lqrU(); return; }
   if (m === 'swingup') { state.u_cmd = swU(); return; }
-  if (m === 'sysid') { state.u_cmd = 0; return; }   // Phase 14
+  if (m === 'sysid') {
+    if (!_sysidU) buildSysidU();
+    state.u_cmd = _sysidU ? _sysidU(state.t - _sysidT0) : 0;
+    return;
+  }
   // 'auto' (default) — blended
   if (!_K) { state.u_cmd = swU(); return; }   // can't LQR without K
   state.u_cmd = _switcher.mix(state.t, state.q, state.qdot, state.params, swU, lqrU);
 }
+
+function buildSysidU() {
+  const kind = state.params.sysid_excitation || 'chirp';
+  const amp = state.params.sysid_amplitude || 5;
+  _sysidT0 = state.t;
+  if (kind === 'impulse')      _sysidU = impulseExcitation({ t0: 0.2, width: 0.05, amplitude: amp });
+  else if (kind === 'step')    _sysidU = stepExcitation({ t0: 0.2, amplitude: amp });
+  else if (kind === 'chirp')   _sysidU = chirpExcitation({ f0: 0.2, f1: 4.0, duration: 8.0, amplitude: amp });
+  else if (kind === 'prbs')    _sysidU = prbsExcitation({ amplitude: amp, dt_switch: 0.1, seed: 12345 });
+  else _sysidU = () => 0;
+}
+
+/** Reset sysid excitation (e.g. on mode-change / sim reset / settings change). */
+export function resetSysid() { _sysidU = null; _sysidT0 = 0; }
 
 /** Expose the current gain for diagnostics / tests. */
 export function getK() { return _K ? _K.slice() : null; }

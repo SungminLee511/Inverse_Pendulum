@@ -423,3 +423,36 @@ This phase delivers Plan C + the Plan B skeleton:
 | Energy-based n=3 from hanging: documented non-stab (browser)      | ✅     | 3097      |
 
 **Total after Phase 13 complete: 164/164 passing (115 headless + 49 UI).**
+
+## Phase 14 — System identification
+
+`src/control/sysid.js` ships four excitation generators (impulse, step,
+chirp, PRBS m-sequence), a small-angle hang-test period predictor +
+zero-crossing detector, an open-loop simulator, an L2 trajectory error
+function, and a coordinate-descent output-error fitter with an adaptive
+per-knob step.
+
+Controller mode `sysid` drives `state.u_cmd` from the chosen excitation
+function (UI Controller panel: `sysid excite` dropdown + `sysid amp [N]`
+slider). State change / reset clears the active excitation; a fresh one is
+built lazily on next tick.
+
+| Test                                                              | Status | Time (ms) |
+|-------------------------------------------------------------------|--------|-----------|
+| impulseExcitation: zero outside [t0,t0+w], amplitude inside       | ✅     | 1.4       |
+| stepExcitation: 0 before t0, amplitude after                      | ✅     | 0.2       |
+| chirpExcitation: amplitude bounded ±amp; f0 instantaneous at t=0  | ✅     | 0.6       |
+| prbsExcitation: takes only values ±amplitude                      | ✅     | 0.6       |
+| prbsExcitation is deterministic with seed                         | ✅     | 1.3       |
+| pendulumPeriod matches √((I+m·l²)/(m·g·l)) · 2π                   | ✅     | 0.2       |
+| periodFromZeroCrossings recovers ground-truth period from sine    | ✅     | 0.6       |
+| periodFromZeroCrossings recovers n=1 free-swing period (heavy cart) | ✅   | 63        |
+| fitOutputError recovers perturbed (m_1, I_1) within 5% (n=1)      | ✅     | 29265     |
+| trajError zero for identical trajs, positive otherwise            | ✅     | 0.5       |
+| simulateOpen samples at sample_dt and respects horizon            | ✅     | 16        |
+| Sys-ID excitation drives non-zero, oscillating u_cmd (browser)    | ✅     | 4010      |
+| Sys-ID step excitation produces sustained u_cmd                   | ✅     | 1359      |
+| Sys-ID PRBS excitation flips sign across samples                  | ✅     | 2956      |
+| Switching sysid → off clears the excitation                       | ✅     | 1890      |
+
+**Total after Phase 14 complete: 179/179 passing (126 headless + 53 UI).**
