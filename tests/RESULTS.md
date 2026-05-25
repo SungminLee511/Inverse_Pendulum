@@ -477,3 +477,40 @@ built lazily on next tick.
 | Full flow: no NaN in state after 5 s sim under default Auto       | ✅     | 2063      |
 
 **Total after Phase 15 complete: 182/182 passing (126 headless + 56 UI).**
+
+## Phase 15.1 — Multi-link stabilisation defaults
+
+Diagnosed by switching to n=2 / n=3 in the live demo and observing the
+pendulum never stabilises. Found four real bugs / mis-tunings in the
+default params:
+
+1. **`state.params.Q_diag` was length-4** (correct only for the n=1 state
+   layout). For n=2 the index-2 entry silently fed the n=1 `Q_ẋ` weight
+   (=1) into `Q_θ_2`, crippling the LQR. Same for n=3, joints 2 and 3 got
+   weights 1 and 10 instead of 100. Fix: `resizeQDiag(n)` is called from
+   `setMode(n)`, rebuilding the array to match `2(n+1)` with sensible
+   defaults that scale with n (`Q_θ` = 100 for n=1, 500 for n≥2;
+   `Q_θ̇` = 10 → 30).
+2. **`R = 0.01`** default was so cheap the LQR saturated at F_max on
+   tiny perturbations. Tuned per-mode (n=1 → 0.05, n=2 → 0.1, n=3 → 0.05)
+   to match the working Phase 9 / Phase 12 head­less configs.
+3. **F_max = 30** was insufficient force authority for the triple. Tuned
+   per-mode (30 → 50 → 80).
+4. **Sensor `angle_noise = 0.1°` + `sensor_period = 2 ms`** caused the
+   velocity-FD bootstrap to register cold-start spurious rad/s values
+   (PLAN §9 "triple sensitivity" pitfall). Tightened sensor specs for
+   n≥2 (`angle_noise`, `sensor_delay`, `quant_bits`, `sensor_period`,
+   `control_period`) so the velocity estimator stays clean.
+
+All four use a `*_user_set` flag — the moment the user touches the
+corresponding panel slider, the auto-tuning stops over-writing it.
+
+`canvas_render.test.js` updated: pause sim + ctrl_mode='off' before
+setting hand-picked q values, so the LQR (now actually working) doesn't
+fly the cart off-canvas.
+
+| Test                                                              | Status |
+|-------------------------------------------------------------------|--------|
+| (re-ran full suite — no regressions; all 182 still pass)          | ✅     |
+
+**Total after Phase 15.1 complete: 182/182 passing (126 headless + 56 UI).**

@@ -51,12 +51,21 @@ test('canvas draws ground, cart, and link 1 for n=1', async () => {
 
 test('canvas draws 2 links when mode = 2 (placeholder physics)', async () => {
   const { srv, browser, page } = await setup();
+  // Pause sim + disable controller before setting q to keep the
+  // hanging-ish IC stable across the render.
+  await page.locator('#btn-playpause').click();
   await page.locator('.mode-btn[data-mode="2"]').click();
   await page.evaluate(() => {
-    window.__pendulum.state.q[1] = Math.PI - 0.5;
-    window.__pendulum.state.q[2] = Math.PI - 0.3;
+    const s = window.__pendulum.state;
+    s.params.ctrl_mode = 'off';
+    s.q[0] = 0; s.qdot[0] = 0;
+    s.q[1] = Math.PI - 0.5; s.qdot[1] = 0;
+    s.q[2] = Math.PI - 0.3; s.qdot[2] = 0;
+    s.u_cmd = 0; s.u_applied = 0; s.u_effective = 0;
+    window.__pendulum._resetActuator();
   });
-  await page.waitForTimeout(300);
+  await page.locator('#btn-playpause').click();   // resume for a render
+  await page.waitForTimeout(150);
   await page.locator('#pendulum-canvas').screenshot({ path: path.join(SHOTDIR, 'n2.png') });
 
   // Detect orange link pixels (link 2 color = #f0883e ~ R=240, G=136, B=62)
